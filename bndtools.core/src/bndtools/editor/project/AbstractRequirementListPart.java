@@ -47,6 +47,7 @@ import bndtools.editor.common.BndEditorPart;
 import bndtools.model.repo.DependencyPhase;
 import bndtools.model.repo.ProjectBundle;
 import bndtools.model.repo.RepositoryBundle;
+import bndtools.model.repo.RepositoryBundleUtils;
 import bndtools.model.repo.RepositoryBundleVersion;
 import bndtools.preferences.BndPreferences;
 import bndtools.wizards.repo.RepoBundleSelectionWizard;
@@ -166,7 +167,7 @@ public abstract class AbstractRequirementListPart extends BndEditorPart implemen
 	private void doAddBundle() {
 		try {
 			RepoBundleSelectionWizard wizard = new RepoBundleSelectionWizard(new ArrayList<VersionedClause>(),
-				DependencyPhase.Run);
+				DependencyPhase.Req);
 			wizard.setSelectionPageTitle(getAddButtonLabel());
 			WizardDialog dialog = new WizardDialog(getSection().getShell(), wizard);
 
@@ -215,10 +216,15 @@ public abstract class AbstractRequirementListPart extends BndEditorPart implemen
 
 	@Override
 	protected final void refreshFromModel() {
-		this.requires.clear();
 		List<Requirement> loadedReqs = doRefreshFromModel();
-		if (loadedReqs != null)
-			this.requires.addAll(loadedReqs);
+		if (loadedReqs == null)
+			loadedReqs = Collections.emptyList();
+
+		if (loadedReqs.equals(this.requires))
+			return;
+
+		this.requires.clear();
+		this.requires.addAll(loadedReqs);
 		viewer.setInput(this.requires);
 	}
 
@@ -262,7 +268,7 @@ public abstract class AbstractRequirementListPart extends BndEditorPart implemen
 		} else if (elem instanceof RepositoryBundleVersion) {
 			RepositoryBundleVersion rbv = (RepositoryBundleVersion) elem;
 			bsn = rbv.getBsn();
-			versionRange = rbv.getVersion()
+			versionRange = RepositoryBundleUtils.toVersionRangeUpToNextMajor(rbv.getVersion())
 				.toString();
 		} else if (elem instanceof ProjectBundle) {
 			bsn = ((ProjectBundle) elem).getBsn();

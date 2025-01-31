@@ -1,6 +1,7 @@
 package aQute.bnd.repository.maven.pom.provider;
 
 import static aQute.bnd.osgi.Constants.BSN_SOURCE_SUFFIX;
+import static aQute.bnd.service.tags.Tags.parse;
 import static java.util.stream.Collectors.joining;
 import static java.util.stream.Collectors.toList;
 
@@ -16,9 +17,11 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.SortedSet;
 import java.util.TreeMap;
+import java.util.TreeSet;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.stream.Collectors;
 
 import org.osgi.resource.Capability;
 import org.osgi.resource.Requirement;
@@ -269,6 +272,7 @@ public class BndPomRepository extends BaseRepository
 	@Override
 	public void setProperties(Map<String, String> map) throws Exception {
 		configuration = Converter.cnv(PomConfiguration.class, map);
+		super.setTags(parse(configuration.tags(), DEFAULT_REPO_TAGS));
 	}
 
 	@Override
@@ -302,16 +306,41 @@ public class BndPomRepository extends BaseRepository
 		}
 
 		Archive archive;
-		ResourceInfo resource = bridge.getInfo(bsn, version);
-		if (resource == null) {
-			archive = trySources(bsn, version);
-			if (archive == null)
+
+		if (isMavenGAV(bsn)) {
+
+			// Handle the GAV. This "hack" is borrowed from
+			// aQute.bnd.repository.maven.provider.IndexFile.find(String,
+			// Version)
+			// because MavenBndRepository can handle both bsn and GAV too
+
+			if (repoImpl instanceof PomRepository pr) {
+
+				Archive spec = Archive.valueOf(bsn + ":" + version);
+
+				archive = pr.archives.stream()
+					.filter(a -> matches(a, spec))
+					.findAny()
+					.orElse(null);
+				if (archive == null)
+					return null;
+			} else {
 				return null;
+			}
+
 		} else {
 
-			String from = resource.getInfo()
-				.from();
-			archive = Archive.valueOf(from);
+			ResourceInfo resource = bridge.getInfo(bsn, version);
+			if (resource == null) {
+				archive = trySources(bsn, version);
+				if (archive == null)
+					return null;
+			} else {
+
+				String from = resource.getInfo()
+					.from();
+				archive = Archive.valueOf(from);
+			}
 		}
 
 		Promise<File> p = repoImpl.getMavenRepository()
@@ -325,6 +354,20 @@ public class BndPomRepository extends BaseRepository
 		return repoImpl.getMavenRepository()
 			.toLocalFile(archive);
 	}
+
+	private boolean isMavenGAV(String bsn) {
+		return bsn != null && bsn.indexOf(':') != -1;
+	}
+
+	private boolean matches(Archive archive, Archive spec) {
+		return archive.revision.program.equals(spec.revision.program) && archive.revision.version.getOSGiVersion()
+			.equals(spec.revision.version.getOSGiVersion()) && spec.classifier.equals(archive.classifier);
+	}
+
+	private boolean matchesGAV(Archive archive, String groupId, String artifactId) {
+		return archive.revision.group.equals(groupId) && archive.revision.artifact.equals(artifactId);
+	}
+
 
 	@Override
 	public boolean canWrite() {
@@ -344,8 +387,30 @@ public class BndPomRepository extends BaseRepository
 		if (!init()) {
 			return Collections.emptySortedSet();
 		}
+
+		if (isMavenGAV(bsn)) {
+			if (repoImpl instanceof PomRepository pr) {
+
+				String[] split = bsn.split(":");
+				String groupId = split[0];
+				String artifactId = split[1];
+
+
+				SortedSet<Version> versions = pr.archives.stream()
+					.filter(a -> matchesGAV(a, groupId, artifactId))
+					.map(a -> a.revision.version.getOSGiVersion())
+					.collect(Collectors.toCollection(TreeSet::new));
+
+				return versions;
+
+			} else {
+				return Collections.emptySortedSet();
+			}
+		}
 		return bridge.versions(bsn);
 	}
+
+
 
 	@Override
 	public String getName() {
@@ -443,5 +508,6 @@ public class BndPomRepository extends BaseRepository
 		return Archive.valueOf(from)
 			.getOther(Archive.JAR_EXTENSION, Archive.SOURCES_CLASSIFIER);
 	}
+
 
 }

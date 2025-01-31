@@ -5,91 +5,109 @@ import java.io.InputStream;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.EnumSet;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.Optional;
 import java.util.OptionalInt;
+import java.util.SortedSet;
+import java.util.TreeSet;
+
+import org.osgi.framework.namespace.ExecutionEnvironmentNamespace;
+import org.osgi.resource.Resource;
 
 import aQute.bnd.exceptions.Exceptions;
+import aQute.bnd.header.Attrs;
 import aQute.bnd.header.Parameters;
 import aQute.bnd.osgi.Analyzer;
+import aQute.bnd.osgi.Processor;
+import aQute.bnd.osgi.resource.FilterParser;
+import aQute.bnd.osgi.resource.FilterParser.Expression;
+import aQute.bnd.osgi.resource.ResourceBuilder;
 import aQute.bnd.version.Version;
 import aQute.lib.utf8properties.UTF8Properties;
 
 public enum EE {
 
-	OSGI_Minimum_1_0("OSGi/Minimum-1.0", "OSGi/Minimum", "1.0"),
+	OSGI_Minimum_1_0("OSGi/Minimum-1.0", "OSGi/Minimum", "1.0", 0),
 
-	OSGI_Minimum_1_1("OSGi/Minimum-1.1", "OSGi/Minimum", "1.1", OSGI_Minimum_1_0),
+	OSGI_Minimum_1_1("OSGi/Minimum-1.1", "OSGi/Minimum", "1.1", 1, OSGI_Minimum_1_0),
 
-	OSGI_Minimum_1_2("OSGi/Minimum-1.2", "OSGi/Minimum", "1.2", OSGI_Minimum_1_1),
+	OSGI_Minimum_1_2("OSGi/Minimum-1.2", "OSGi/Minimum", "1.2", 2, OSGI_Minimum_1_1),
 
-	JRE_1_1("JRE-1.1", "JRE", "1.1"),
+	JRE_1_1("JRE-1.1", "JRE", "1.1", 1),
 
-	J2SE_1_2("J2SE-1.2", "JavaSE", "1.2", JRE_1_1),
+	J2SE_1_2("J2SE-1.2", "JavaSE", "1.2", 2, JRE_1_1),
 
-	J2SE_1_3("J2SE-1.3", "JavaSE", "1.3", J2SE_1_2, OSGI_Minimum_1_1),
+	J2SE_1_3("J2SE-1.3", "JavaSE", "1.3", 3, J2SE_1_2, OSGI_Minimum_1_1),
 
-	J2SE_1_4("J2SE-1.4", "JavaSE", "1.4", J2SE_1_3, OSGI_Minimum_1_2),
+	J2SE_1_4("J2SE-1.4", "JavaSE", "1.4", 4, J2SE_1_3, OSGI_Minimum_1_2),
 
-	J2SE_1_5("J2SE-1.5", "JavaSE", "1.5", J2SE_1_4),
+	J2SE_1_5("J2SE-1.5", "JavaSE", "1.5", 5, J2SE_1_4),
 
-	JavaSE_1_6("JavaSE-1.6", "JavaSE", "1.6", J2SE_1_5),
+	JavaSE_1_6("JavaSE-1.6", "JavaSE", "1.6", 6, J2SE_1_5),
 
-	JavaSE_1_7("JavaSE-1.7", "JavaSE", "1.7", JavaSE_1_6),
+	JavaSE_1_7("JavaSE-1.7", "JavaSE", "1.7", 7, JavaSE_1_6),
 
-	JavaSE_compact1_1_8("JavaSE/compact1-1.8", "JavaSE/compact1", "1.8", OSGI_Minimum_1_2),
+	JavaSE_compact1_1_8("JavaSE/compact1-1.8", "JavaSE/compact1", "1.8", 8, OSGI_Minimum_1_2),
 
-	JavaSE_compact2_1_8("JavaSE/compact2-1.8", "JavaSE/compact2", "1.8", JavaSE_compact1_1_8),
+	JavaSE_compact2_1_8("JavaSE/compact2-1.8", "JavaSE/compact2", "1.8", 8, JavaSE_compact1_1_8),
 
-	JavaSE_compact3_1_8("JavaSE/compact3-1.8", "JavaSE/compact3", "1.8", JavaSE_compact2_1_8),
+	JavaSE_compact3_1_8("JavaSE/compact3-1.8", "JavaSE/compact3", "1.8", 8, JavaSE_compact2_1_8),
 
-	JavaSE_1_8("JavaSE-1.8", "JavaSE", "1.8", JavaSE_1_7, JavaSE_compact3_1_8),
+	JavaSE_1_8("JavaSE-1.8", "JavaSE", "1.8", 8, JavaSE_1_7, JavaSE_compact3_1_8),
 
-	JavaSE_9,
-	JavaSE_10,
-	JavaSE_11,
-	JavaSE_12,
-	JavaSE_13,
-	JavaSE_14,
-	JavaSE_15,
-	JavaSE_16,
-	JavaSE_17,
-	JavaSE_18,
-	JavaSE_19,
-	JavaSE_20,
-	JavaSE_21,
-	JavaSE_22,
-	JavaSE_23,
-	JavaSE_24,
+	JavaSE_9(9),
+	JavaSE_10(10),
+	JavaSE_11(11),
+	JavaSE_12(12),
+	JavaSE_13(13),
+	JavaSE_14(14),
+	JavaSE_15(15),
+	JavaSE_16(16),
+	JavaSE_17(17),
+	JavaSE_18(18),
+	JavaSE_19(19),
+	JavaSE_20(20),
+	JavaSE_21(21),
+	JavaSE_22(22),
+	JavaSE_23(23),
+	JavaSE_24(24),
 
-	UNKNOWN("<UNKNOWN>", "UNKNOWN", "0");
+	UNKNOWN("<UNKNOWN>", "UNKNOWN", "0", 0);
+
+	final public static int			MAX_SUPPORTED_RELEASE	= 24;
 
 	private final String			eeName;
 	private final String			capabilityName;
 	private final String			versionLabel;
 	private final Version			capabilityVersion;
 	private final EE[]				compatible;
+	private final int				release;
 	private transient EnumSet<EE>	compatibleSet;
-	private transient Parameters	packages	= null;
-	private transient Parameters	modules		= null;
+	private transient Parameters	packages				= null;
+	private transient Parameters	modules					= null;
 
+	private Resource				resource;
 	/**
 	 * For use by JavaSE_9 and later.
 	 */
-	EE() {
+	EE(int release) {
 		int version = ordinal() - 5;
 		this.versionLabel = Integer.toString(version);
 		this.eeName = "JavaSE-" + versionLabel;
 		this.capabilityName = "JavaSE";
 		this.capabilityVersion = new Version(version);
 		this.compatible = null;
+		this.release = release;
 	}
 
-	EE(String eeName, String capabilityName, String versionLabel, EE... compatible) {
+	EE(String eeName, String capabilityName, String versionLabel, int release, EE... compatible) {
 		this.eeName = eeName;
 		this.capabilityName = capabilityName;
 		this.versionLabel = versionLabel;
 		this.capabilityVersion = new Version(versionLabel);
 		this.compatible = compatible;
+		this.release = release;
 	}
 
 	public String getEEName() {
@@ -106,6 +124,7 @@ public enum EE {
 	}
 
 	private static final EE[] values = values();
+
 	private Optional<EE> previous() {
 		int ordinal = ordinal() - 1;
 		if (ordinal >= 0) {
@@ -188,7 +207,7 @@ public enum EE {
 
 	public static EE parse(String str) {
 		for (EE ee : values) {
-			if (ee.eeName.equals(str))
+			if (ee.eeName.equalsIgnoreCase(str))
 				return ee;
 		}
 		return null;
@@ -239,5 +258,105 @@ public enum EE {
 		} catch (IOException ioe) {
 			throw Exceptions.duck(ioe);
 		}
+	}
+
+	public int getRelease() {
+		return release;
+	}
+
+	public int getMajorVersion() {
+		return release + 44;
+	}
+
+	/**
+	 * From a Require-Capability header, extract the Execution Environment
+	 * capability and match against EEs. This is generally used with one
+	 * requirement. If you add multiple, the EE's are or'ed.
+	 *
+	 * @param requirement the Require-Capability header
+	 * @return A sorted set of EEs that match one of the given requirements
+	 */
+	public static SortedSet<EE> getEEsFromRequirement(String requirement) {
+		Parameters reqs = new Parameters(requirement);
+		SortedSet<EE> result = new TreeSet<>();
+		FilterParser fp = new FilterParser();
+
+		for (Map.Entry<String, Attrs> e : reqs.entrySet()) {
+			Attrs attrs = reqs.get(ExecutionEnvironmentNamespace.EXECUTION_ENVIRONMENT_NAMESPACE);
+			if (attrs != null) {
+				String filter = attrs.get("filter:");
+				Expression expr = fp.parse(filter);
+				Map<String, Object> map = new HashMap<>();
+				for (EE v : EE.values) {
+					map.put(ExecutionEnvironmentNamespace.EXECUTION_ENVIRONMENT_NAMESPACE, v.getCapabilityName());
+					map.put(ExecutionEnvironmentNamespace.CAPABILITY_VERSION_ATTRIBUTE, v.getCapabilityVersion());
+					if (expr.eval(map)) {
+						result.add(v);
+					}
+				}
+			}
+		}
+		return result;
+	}
+
+	final static EE[] classFileVersionsMinus44 = {
+		UNKNOWN, JRE_1_1, J2SE_1_2, J2SE_1_3, J2SE_1_4, J2SE_1_5, JavaSE_1_6, JavaSE_1_7, JavaSE_1_8, JavaSE_9,
+		JavaSE_10, JavaSE_11, JavaSE_12, JavaSE_13, JavaSE_14, JavaSE_15, JavaSE_16, JavaSE_17, JavaSE_18, JavaSE_19,
+		JavaSE_20, JavaSE_21, JavaSE_22, JavaSE_23, JavaSE_24
+	};
+
+	/**
+	 * Return the EE associated with the given class file version
+	 *
+	 * @param majorVersion the class file major version
+	 * @return the EE or empty
+	 */
+	public static EE getEEFromClassVersion(int majorVersion) {
+		majorVersion -= 44;
+		if (majorVersion < 0 || majorVersion > classFileVersionsMinus44.length)
+			return UNKNOWN;
+		return classFileVersionsMinus44[majorVersion];
+	}
+
+	/**
+	 * Return the EE related to the release version
+	 */
+
+	public static EE getEEFromReleaseVersion(int releaseVersion) {
+		for (int i = values().length - 1; i >= 0; i--) {
+			EE ee = values()[i];
+			if (ee.release == releaseVersion)
+				return ee;
+		}
+		return UNKNOWN;
+	}
+
+	static SortedSet<EE> all;
+	static {
+		var a = new TreeSet<>(Arrays.asList(EE.values));
+		a.remove(UNKNOWN);
+		all = Collections.unmodifiableSortedSet(a);
+	}
+
+	public static SortedSet<EE> all() {
+		return all;
+	}
+
+	/**
+	 * Return a list of capabilities associated with this EE
+	 */
+	public Resource getResource() {
+		if (resource != null)
+			return resource;
+
+		ResourceBuilder rb = new ResourceBuilder();
+		getPackages()
+			.forEach((k, v) -> {
+				String name = Processor.removeDuplicateMarker(k);
+				rb.addExportPackage(name, v);
+			});
+
+		rb.addEE(this);
+		return resource = rb.build();
 	}
 }

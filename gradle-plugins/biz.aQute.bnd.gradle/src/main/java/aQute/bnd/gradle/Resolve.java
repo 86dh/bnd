@@ -218,7 +218,7 @@ public class Resolve extends AbstractBndrun {
 	 * @param workspace The workspace for the Bndrun.
 	 * @param bndrunFile The bndrun file for the Bndrun.
 	 * @return The Bndrun object.
-	 * @throws Exception If the create action has an exception.
+	 * @throws Exception If the creation action has an exception.
 	 */
 	@Override
 	protected biz.aQute.resolve.Bndrun createBndrun(Workspace workspace, File bndrunFile) throws Exception {
@@ -226,12 +226,25 @@ public class Resolve extends AbstractBndrun {
 		if (!Objects.equals(outputBndrunFile, bndrunFile)) {
 			try (Writer writer = IO.writer(outputBndrunFile)) {
 				UTF8Properties props = new UTF8Properties();
-				props.setProperty(Constants.INCLUDE, String.format("\"%s\"", IO.absolutePath(bndrunFile)));
+				props.setProperty(Constants.INCLUDE, String.format("\"~%s\"", escape(IO.absolutePath(bndrunFile))));
 				props.store(writer, null);
 			}
 			bndrunFile = outputBndrunFile;
 		}
 		return super.createBndrun(workspace, bndrunFile);
+	}
+
+	private String escape(String input) {
+		final int length = input.length();
+		StringBuilder sb = new StringBuilder(length);
+		for (int i = 0; i < length;i++) {
+			char c = input.charAt(i);
+			if (c == '"') {
+				sb.append('\\');
+			}
+			sb.append(c);
+		}
+		return sb.length() == length ? input : sb.toString();
 	}
 
 	/**
@@ -243,12 +256,11 @@ public class Resolve extends AbstractBndrun {
 	 */
 	@Override
 	protected void worker(Project run) throws Exception {
-		if (run instanceof biz.aQute.resolve.Bndrun) {
-			worker((biz.aQute.resolve.Bndrun) run);
-			return;
+		if (!(run instanceof biz.aQute.resolve.Bndrun bndrun)) {
+			throw new GradleException(
+				"Resolving a project's bnd.bnd file is not supported by this task. This task can only resolve a bndrun file.");
 		}
-		throw new GradleException(
-			"Resolving a project's bnd.bnd file is not supported by this task. This task can only resolve a bndrun file.");
+		worker0(bndrun);
 	}
 
 	/**
@@ -257,7 +269,7 @@ public class Resolve extends AbstractBndrun {
 	 * @param run The Bndrun object.
 	 * @throws Exception If the worker action has an exception.
 	 */
-	private void worker(biz.aQute.resolve.Bndrun run) throws Exception {
+	private void worker0(biz.aQute.resolve.Bndrun run) throws Exception {
 		getLogger().info("Resolving runbundles required for {}", run.getPropertiesFile());
 		getLogger().debug("Run properties: {}", run.getProperties());
 		try {

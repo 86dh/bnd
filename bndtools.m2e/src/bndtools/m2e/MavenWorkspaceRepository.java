@@ -250,10 +250,10 @@ public class MavenWorkspaceRepository extends AbstractIndexingRepository<IProjec
 	}
 
 	@Override
-	public void mavenProjectChanged(MavenProjectChangedEvent[] events, IProgressMonitor monitor) {
+	public void mavenProjectChanged(List<MavenProjectChangedEvent> events, IProgressMonitor monitor) {
 		boolean changed = false;
 
-		for (MavenProjectChangedEvent event : ((events != null) ? events : new MavenProjectChangedEvent[0])) {
+		for (MavenProjectChangedEvent event : events) {
 			Kind kind = Kind.get(event);
 			logger.debug("{}: mavenProjectChanged({}, {})", getName(), kind, event.getSource());
 			switch (kind) {

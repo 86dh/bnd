@@ -1,7 +1,6 @@
 package aQute.bnd.gradle;
 
 import static aQute.bnd.gradle.BndUtils.builtBy;
-import static aQute.bnd.gradle.BndUtils.isGradleCompatible;
 import static aQute.bnd.gradle.BndUtils.jarLibraryElements;
 import static aQute.bnd.gradle.BndUtils.logReport;
 import static aQute.bnd.gradle.BndUtils.sourceSets;
@@ -60,7 +59,6 @@ import org.gradle.api.tasks.InputFile;
 import org.gradle.api.tasks.InputFiles;
 import org.gradle.api.tasks.PathSensitive;
 import org.gradle.api.tasks.SourceSet;
-import org.gradle.api.tasks.TaskInputFilePropertyBuilder;
 import org.gradle.api.tasks.compile.AbstractCompile;
 import org.gradle.work.NormalizeLineEndings;
 
@@ -212,7 +210,7 @@ public class BundleTaskExtension {
 		outputDirectory = objects.directoryProperty();
 		SourceSet mainSourceSet = sourceSets(project).getByName(SourceSet.MAIN_SOURCE_SET_NAME);
 		setSourceSet(mainSourceSet);
-		classpath(mainSourceSet.getCompileClasspath());
+		classpath(jarLibraryElements(task, mainSourceSet.getCompileClasspathConfigurationName()));
 		properties = objects.mapProperty(String.class, Object.class)
 			.convention(Maps.of("project", "__convention__"));
 		defaultBundleSymbolicName = task.getArchiveBaseName()
@@ -222,20 +220,18 @@ public class BundleTaskExtension {
 			.map(version -> MavenVersion.parseMavenString(version)
 				.getOSGiVersion()
 				.toString());
-		// need to programmatically add to inputs since @InputFiles in a
+		// need to programmatically add to inputs since @InputFiles in an
 		// extension is not processed
 		task.getInputs()
 			.files(getClasspath())
 			.withNormalizer(ClasspathNormalizer.class)
 			.withPropertyName("classpath");
-		TaskInputFilePropertyBuilder bndfileInput = task.getInputs()
+		task.getInputs()
 			.file(getBndfile())
 			.optional()
 			.withPathSensitivity(RELATIVE)
-			.withPropertyName("bndfile");
-		if (isGradleCompatible("7.2")) {
-			bndfileInput.normalizeLineEndings();
-		}
+			.withPropertyName("bndfile")
+			.normalizeLineEndings();
 		task.getInputs()
 			.property("bnd", getBnd());
 		task.getInputs()
@@ -339,8 +335,6 @@ public class BundleTaskExtension {
 			.getTasks()
 			.named(sourceSet.getCompileJavaTaskName(), AbstractCompile.class)
 			.flatMap(AbstractCompile::getDestinationDirectory));
-
-		jarLibraryElements(getTask(), sourceSet.getCompileClasspathConfigurationName());
 	}
 
 	ConfigurableFileCollection getAllSource() {
@@ -474,14 +468,10 @@ public class BundleTaskExtension {
 					}
 					String compression = builder.getProperty(Constants.COMPRESSION);
 					if (Objects.isNull(compression)) {
-						switch (getTask().getEntryCompression()) {
-							case STORED :
-								builder.setProperty(Constants.COMPRESSION, Jar.Compression.STORE.name());
-								break;
-							case DEFLATED :
-								// default
-								break;
-						}
+						builder.setProperty(Constants.COMPRESSION, switch (getTask().getEntryCompression()) {
+							case STORED -> Jar.Compression.STORE.name();
+							case DEFLATED -> Jar.Compression.DEFLATE.name();
+						});
 					}
 					bundleJar.updateModified(archiveFile.lastModified(), "time of Jar task generated jar");
 					bundleJar.setManifest(new Manifest());
@@ -574,8 +564,8 @@ public class BundleTaskExtension {
 		}
 
 		private String unwrapAttributeValue(Object value) {
-			while (value instanceof Provider) {
-				value = ((Provider<?>) value).getOrNull();
+			while (value instanceof Provider<?> provider) {
+				value = provider.getOrNull();
 			}
 			if (value == null) {
 				return null;
@@ -604,11 +594,11 @@ public class BundleTaskExtension {
 		@Override
 		public Set<Entry<String, Object>> entrySet() {
 			Set<Entry<Object, Object>> entrySet = source.entrySet();
-			return new AbstractSet<Entry<String, Object>>() {
+			return new AbstractSet<>() {
 				@Override
 				public Iterator<Entry<String, Object>> iterator() {
 					Iterator<Entry<Object, Object>> iterator = entrySet.iterator();
-					return new Iterator<Entry<String, Object>>() {
+					return new Iterator<>() {
 						@Override
 						public boolean hasNext() {
 							return iterator.hasNext();

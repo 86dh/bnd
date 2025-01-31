@@ -9,7 +9,6 @@ import java.io.InputStream;
 import java.net.ServerSocket;
 import java.nio.file.Path;
 import java.nio.file.Paths;
-import java.security.Permission;
 import java.util.AbstractList;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -34,9 +33,11 @@ import org.w3c.dom.Node;
 import org.w3c.dom.NodeList;
 
 import aQute.bnd.exceptions.Exceptions;
+import aQute.junit.system.BndSystem;
 import aQute.launchpad.BundleSpecBuilder;
 import aQute.launchpad.Launchpad;
 import aQute.launchpad.LaunchpadBuilder;
+import aQute.tester.junit.platform.test.ExitCode;
 import aQute.tester.test.utils.ServiceLoaderMask;
 import aQute.tester.test.utils.TestBundler;
 import aQute.tester.test.utils.TestRunData;
@@ -61,12 +62,12 @@ public class AbstractActivatorTest implements StandardSoftAssertionsProvider {
 		assertAll();
 	}
 
-	protected Launchpad			lp;
-	protected SecurityManager	oldManager;
-	private final Path			resultsDir	= Paths.get("generated", "test-reports", "test")
+	protected Launchpad		lp;
+	protected AutoCloseable	oldManager;
+	private final Path		resultsDir	= Paths.get("generated", "test-reports", "test")
 		.toAbsolutePath();
-	protected int				eclipseJUnitPort;
-	protected TestInfo			info;
+	protected int			eclipseJUnitPort;
+	protected TestInfo		info;
 
 	protected TestRunDataAssert assertThat(TestRunData a) {
 		return proxy(TestRunDataAssert.class, TestRunData.class, a);
@@ -176,8 +177,12 @@ public class AbstractActivatorTest implements StandardSoftAssertionsProvider {
 		try {
 			r.run();
 			throw new AssertionError("Expecting run() to call System.exit(), but it didn't");
-		} catch (ExitCode e) {
-			return e;
+		} catch (Throwable e) {
+			Throwable t = BndSystem.convert(e, ExitCode::new);
+			if (t instanceof ExitCode ec)
+				return ec;
+
+			throw Exceptions.duck(t);
 		}
 	}
 
@@ -204,7 +209,7 @@ public class AbstractActivatorTest implements StandardSoftAssertionsProvider {
 		final Runnable r = oR.get();
 
 		runThread = new Thread(r, name);
-		runThread.setUncaughtExceptionHandler((t, x) -> uncaught.set(x));
+		runThread.setUncaughtExceptionHandler((t, x) -> uncaught.set(BndSystem.convert(x, ExitCode::new)));
 		runThread.start();
 	}
 
@@ -351,42 +356,6 @@ public class AbstractActivatorTest implements StandardSoftAssertionsProvider {
 		return runTestsEclipse(null, testBundles);
 	}
 
-	// This extends Error rather than SecurityException so that it can traverse
-	// the catch(Exception) statements in the code-under-test.
-	protected class ExitCode extends Error {
-		private static final long	serialVersionUID	= -1498037177123939551L;
-		public final int			exitCode;
-		final StackTraceElement[]	stack;
-
-		public ExitCode(int exitCode, StackTraceElement[] stack) {
-			this.exitCode = exitCode;
-			this.stack = stack;
-		}
-	}
-
-	// To catch calls to System.exit() calls within bnd.aQute.junit that
-	// otherwise cause the entire test harness to exit.
-	public class ExitCheck extends SecurityManager {
-		@Override
-		public void checkPermission(Permission perm) {}
-
-		@Override
-		public void checkPermission(Permission perm, Object context) {}
-
-		@Override
-		public void checkExit(int status) {
-			// Because the activator might have been loaded in a different
-			// classloader, need to check names and not objects.
-			if (Stream.of(getClassContext())
-				.anyMatch(x -> x.getName()
-					.equals(activatorClass))) {
-				throw new ExitCode(status, Thread.currentThread()
-					.getStackTrace());
-			}
-			super.checkExit(status);
-		}
-	}
-
 	public AbstractActivatorTest(String activatorClass, String tester) {
 		this.activatorClass = activatorClass;
 		this.tester = tester;
@@ -466,5 +435,9 @@ public class AbstractActivatorTest implements StandardSoftAssertionsProvider {
 	@Override
 	public void succeeded() {
 		softly.succeeded();
+	}
+
+	protected AutoCloseable setExitToThrowExitCode() {
+		return BndSystem.throwErrorOnExit();
 	}
 }

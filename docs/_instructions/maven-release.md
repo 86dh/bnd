@@ -12,7 +12,10 @@ Though this instruction is not specific for a plugin, it was developed in conjun
 
     -maven-release ::= ( 'local'|'remote' ( ';' snapshot )? ) ( ',' option )*
     snapshot       ::= <value to be used for timestamp>
-    option         ::= sources | javadoc | pom | sign
+    option         ::= sources | javadoc | pom | sign | archive*
+    archive          ::= 'archive' 
+                       ( ';path=' ( PATH | '{' PATH '}' )?
+                       ( ';classifier=' maven-classifier )?
     sources        ::= 'sources' 
                        ( ';path=' ( 'NONE' | PATH ) )?
                        ( ';force=' ( 'true' | 'false' ) )?
@@ -32,15 +35,23 @@ If `sources` or `javadoc` has the attribute `force=true`, either one will be rel
 
 The `aQute.maven.bnd.MavenBndRepository` is a bnd plugin that represent the local and a remote Maven repository. The locations of both repositories can be configured. The local repository is always used as a cache for the remote repository.
 
-The repository has the following parameters:
-
-* `url` – The remote repository URL. Credentials and proxy can be set with the [Http Client options]. The url should be the base url of a Maven repository. If no URL is configured, there is no remote repository.
-* `local`  – (`~/.m2/repository`) The location of the local repository. By default this is `~/.m2/repository`. It is not possible to not have a local repository because it acts as the cache.
-* `generate` – (`JAVADOC,SOURCES`) A combination of `JAVADOC` and/or `SOURCES`. If no `-maven-release` instruction is found and the released artifact contains source code, then the given classifiers are used to generate them.
-* `readOnly` – (`false`) Indicates if this is a read only repository
-* `name` – The name of the repository
+For a detailed configuration of the [Maven Bnd Repository Plugin][1], please look at the documentation page.
 
 If the Maven Bnd Repository is asked to put a file, it will look up the `-maven-release` instruction using merged properties. The property is looked up from the bnd file that built the artifact. However, it should in general be possible to define this header in the workspace using macros like `${project}` to specify relative paths.
+
+The `archive` option provides a way to add additional files/archives to release. A Maven release always has a pom and then a number of files/archives that are separated by a _classifier_. The default classifier is generally the jar file. Special classifiers are reserved for the sources and the javadoc. 
+
+The `archive` option takes the following parameters:
+
+* `path` : The path to the file that will be placed in the release directory. If the path is surrounded by curly braces, it will be pre-processed.
+* `classifier` : The classifier of the file. This is the maven classifier used.
+
+For example:
+
+     -maven-release \
+           archive;\
+            path=files/feature.json;
+            classifier=feature
 
 # Signing
 

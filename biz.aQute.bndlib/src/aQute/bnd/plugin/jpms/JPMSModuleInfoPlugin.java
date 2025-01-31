@@ -5,7 +5,6 @@ import static aQute.bnd.classfile.ModuleAttribute.ACC_OPEN;
 import static aQute.bnd.classfile.ModuleAttribute.ACC_SYNTHETIC;
 import static aQute.bnd.osgi.Constants.ACCESS_ATTRIBUTE;
 import static aQute.bnd.osgi.Constants.AUTOMATIC_MODULE_NAME;
-import static aQute.bnd.osgi.Constants.DYNAMICIMPORT_PACKAGE;
 import static aQute.bnd.osgi.Constants.EXPORTS_ATTRIBUTE;
 import static aQute.bnd.osgi.Constants.IGNORE_ATTRIBUTE;
 import static aQute.bnd.osgi.Constants.INTERNAL_EXPORT_TO_MODULES_DIRECTIVE;
@@ -50,9 +49,9 @@ import java.util.Map.Entry;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
+import java.util.TreeSet;
 import java.util.function.Supplier;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
+import java.util.jar.Manifest;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -67,12 +66,14 @@ import aQute.bnd.osgi.Analyzer;
 import aQute.bnd.osgi.Constants;
 import aQute.bnd.osgi.Descriptors.PackageRef;
 import aQute.bnd.osgi.Descriptors.TypeRef;
+import aQute.bnd.osgi.Domain;
 import aQute.bnd.osgi.EmbeddedResource;
 import aQute.bnd.osgi.Instructions;
+import aQute.bnd.osgi.JPMSModule;
 import aQute.bnd.osgi.Jar;
 import aQute.bnd.osgi.Packages;
 import aQute.bnd.osgi.Processor;
-import aQute.bnd.service.verifier.VerifierPlugin;
+import aQute.bnd.service.ManifestPlugin;
 import aQute.bnd.stream.MapStream;
 import aQute.lib.io.ByteBufferDataOutput;
 import aQute.lib.strings.Strings;
@@ -81,7 +82,7 @@ import aQute.lib.strings.Strings;
  * A plugin to generate a module-info class from analyzer metadata and bundle
  * annotations.
  */
-public class JPMSModuleInfoPlugin implements VerifierPlugin {
+public class JPMSModuleInfoPlugin implements ManifestPlugin {
 
 	enum Access {
 		CLOSED(0),
@@ -90,33 +91,25 @@ public class JPMSModuleInfoPlugin implements VerifierPlugin {
 		MANDATED(ACC_MANDATED);
 
 		public static Set<Access> parse(String input) {
-			switch (input.toLowerCase(Locale.ROOT)) {
-				case "open" :
-				case "0x0020" :
-				case "32" :
-					return EnumSet.of(OPEN);
-				case "synthetic" :
-				case "0x1000" :
-				case "4096" :
-					return EnumSet.of(SYNTHETIC);
-				case "mandated" :
-				case "0x8000" :
-				case "32768" :
-					return EnumSet.of(MANDATED);
-				default :
+			return switch (input.toLowerCase(Locale.ROOT)) {
+				case "open", "0x0020", "32" -> EnumSet.of(OPEN);
+				case "synthetic", "0x1000", "4096" -> EnumSet.of(SYNTHETIC);
+				case "mandated", "0x8000", "32768" -> EnumSet.of(MANDATED);
+				default -> {
 					if (input.indexOf(',') > -1) {
-						return Strings.splitAsStream(input)
+						yield Strings.splitAsStream(input)
 							.map(Access::parse)
 							.flatMap(Set::stream)
 							.collect(toCollection(() -> EnumSet.noneOf(Access.class)));
 					}
 					int parsedValue = Integer.decode(input);
-					return Arrays.stream(values())
+					yield Arrays.stream(values())
 						.filter(a -> a.getValue() == parsedValue)
 						.findFirst()
 						.map(EnumSet::of)
 						.orElseThrow(() -> new IllegalArgumentException(input));
-			}
+				}
+			};
 		}
 
 		Access(int value) {
@@ -132,25 +125,19 @@ public class JPMSModuleInfoPlugin implements VerifierPlugin {
 
 	private static final Logger		logger						= LoggerFactory.getLogger(JPMSModuleInfoPlugin.class);
 
-	private static final Pattern	mangledModuleName			= Pattern.compile("(.*)-\\d.*");
-
 	private static final EE			DEFAULT_MODULE_EE			= EE.JavaSE_11;
 	private static final String		INTERNAL_MODULE_DIRECTIVE	= "-internal-module:";
 
 	@Override
-	public void verify(final Analyzer analyzer) throws Exception {
+	public void mainSet(Analyzer analyzer, Manifest manifest) throws Exception {
 		String moduleProperty = analyzer.getProperty(JPMS_MODULE_INFO);
 		if (moduleProperty == null)
 			return;
 
-		Parameters provideCapabilities = new Parameters(analyzer.getJar()
-			.getManifest()
-			.getMainAttributes()
-			.getValue(PROVIDE_CAPABILITY));
-		Parameters requireCapabilities = new Parameters(analyzer.getJar()
-			.getManifest()
-			.getMainAttributes()
-			.getValue(REQUIRE_CAPABILITY));
+		Domain domain = Domain.domain(manifest);
+
+		Parameters provideCapabilities = new Parameters(domain.get(PROVIDE_CAPABILITY));
+		Parameters requireCapabilities = new Parameters(domain.get(REQUIRE_CAPABILITY));
 
 		if (moduleProperty.isEmpty()) {
 			String name = name(analyzer);
@@ -181,8 +168,11 @@ public class JPMSModuleInfoPlugin implements VerifierPlugin {
 
 		// Index the whole class path
 		for (Jar jar : analyzer.getClasspath()) {
-			String moduleName = getModuleName(analyzer, jar, moduleInfoOptions);
-			String moduleVersion = jar.getModuleVersion();
+			JPMSModule m = new JPMSModule(jar);
+
+			String moduleName = getModuleName(analyzer, m, moduleInfoOptions);
+			String moduleVersion = m.getModuleVersion()
+				.orElse(null);
 			Attrs attrs = new Attrs();
 			if (moduleName != null) {
 				attrs.put(INTERNAL_MODULE_DIRECTIVE, moduleName);
@@ -206,7 +196,8 @@ public class JPMSModuleInfoPlugin implements VerifierPlugin {
 		ModuleInfoBuilder builder = nameAccessAndVersion(moduleInstructions, requireCapabilities, analyzer);
 
 		packages(builder, analyzer);
-		requires(builder, analyzer, moduleInstructions, index, moduleInfoOptions, bcpEntries);
+		requires(builder, analyzer, moduleInstructions, index, moduleInfoOptions, bcpEntries,
+			domain.get(Constants.DYNAMICIMPORT_PACKAGE));
 		exportPackages(builder, analyzer, exports, bcpEntries);
 		openPackages(builder, contained);
 		serviceLoaderProviders(builder, analyzer, provideCapabilities, bcpEntries);
@@ -221,33 +212,46 @@ public class JPMSModuleInfoPlugin implements VerifierPlugin {
 			.putResource(MODULE_INFO_CLASS, new EmbeddedResource(bbout.toByteBuffer(), analyzer.lastModified()));
 	}
 
-	private String getModuleName(Analyzer analyzer, Jar jar, Parameters moduleInfoOptions) throws Exception {
-		String moduleName = jar.getModuleName();
+	private String getModuleName(Analyzer analyzer, JPMSModule m, Parameters moduleInfoOptions) throws Exception {
+		String moduleName = m.getModuleName()
+			.orElse(null);
 		if (moduleName == null) {
+			Jar jar = m.getJar();
+
 			if (jar.getSource() != null && jar.getSource()
 				.isDirectory()) {
 				return null;
 			}
-			moduleName = jar.getName();
-			Matcher matcher = mangledModuleName.matcher(moduleName);
-			if (matcher.matches()) {
-				moduleName = matcher.group(1);
+
+			String jarName = jar.getName();
+
+			class CMN implements AutoCloseable {
+				final Set<String> names = new TreeSet<>();
+
+				@Override
+				public void close() throws Exception {
+					analyzer.warning("jpms.jarname calculated module names from file name: %s", names);
+				}
 			}
+			analyzer.atEndOfBracket(CMN.class, cmn -> cmn.names.add(jarName), CMN::new);
+
+			moduleName = JPMSModule.cleanupName(jarName);
 			final String name = moduleName;
 			moduleName = moduleInfoOptions.stream()
-				.filterValue(attrs -> name.equals(attrs.get(SUBSTITUTE_ATTRIBUTE)))
+				.mapValue(attrs -> attrs.get(SUBSTITUTE_ATTRIBUTE))
+				.mapValue(JPMSModule::cleanupName)
+				.filterValue(s -> name.equals(s))
 				.keys()
 				.findFirst()
 				.orElse(moduleName);
 
-			if (logger.isDebugEnabled())
-				logger.debug("Using module name '{}' for: {}", moduleName, jar);
+			logger.debug("Using module name '{}' for: {}", moduleName, jar);
 		}
-		return moduleName;
+		return JPMSModule.cleanupName(moduleName);
 	}
 
 	private String name(Analyzer analyzer) {
-		return analyzer.getProperty(AUTOMATIC_MODULE_NAME, analyzer.getBsn());
+		return analyzer.getProperty(AUTOMATIC_MODULE_NAME, JPMSModule.cleanupName(analyzer.getBsn()));
 	}
 
 	private void packages(ModuleInfoBuilder builder, Analyzer analyzer) {
@@ -324,7 +328,8 @@ public class JPMSModuleInfoPlugin implements VerifierPlugin {
 	}
 
 	private void requires(ModuleInfoBuilder builder, Analyzer analyzer, Entry<String, Attrs> instruction,
-		Packages index, Parameters moduleInfoOptions, Set<PackageRef> bcpEntries) throws Exception {
+		Packages index, Parameters moduleInfoOptions, Set<PackageRef> bcpEntries, String dynamicImports)
+		throws Exception {
 
 		String eeAttribute = instruction.getValue()
 			.get(Constants.EE_ATTRIBUTE);
@@ -349,10 +354,7 @@ public class JPMSModuleInfoPlugin implements VerifierPlugin {
 		Packages imports = analyzer.getImports();
 		Packages referred = analyzer.getReferred();
 
-		Instructions dynamicImportPackages = new Instructions(new Parameters(analyzer.getJar()
-			.getManifest()
-			.getMainAttributes()
-			.getValue(DYNAMICIMPORT_PACKAGE)));
+		Instructions dynamicImportPackages = new Instructions(dynamicImports);
 
 		Packages externallyReferred = new Packages(referred);
 		exports.keySet()
@@ -378,8 +380,8 @@ public class JPMSModuleInfoPlugin implements VerifierPlugin {
 					if (eeModuleName == null) {
 						if (logger.isDebugEnabled() &&
 						// Ignore optional imports at this stage
-						MapStream.ofNullable(importAttrs)
-							.noneMatch((k, v) -> k.equals(RESOLUTION_DIRECTIVE) && v.equals(RESOLUTION_OPTIONAL))) {
+							MapStream.ofNullable(importAttrs)
+								.noneMatch((k, v) -> k.equals(RESOLUTION_DIRECTIVE) && v.equals(RESOLUTION_OPTIONAL))) {
 
 							logger.debug("Can't find a module name for imported package: {}", packageRef.getFQN());
 						}
@@ -483,8 +485,8 @@ public class JPMSModuleInfoPlugin implements VerifierPlugin {
 			// We need the `register:` directive to be present for this to work.
 			.filterValue(attrs -> attrs.containsKey(SERVICELOADER_REGISTER_DIRECTIVE))
 			.values()
-			.collect(groupingBy(attrs -> analyzer.getTypeRefFromFQN(attrs.get(SERVICELOADER_NAMESPACE)),
-				mapFactory(), toList()))
+			.collect(groupingBy(attrs -> analyzer.getTypeRefFromFQN(attrs.get(SERVICELOADER_NAMESPACE)), mapFactory(),
+				toList()))
 			.forEach((typeRef, attrsList) -> {
 
 				// We can't provide JPMS services from packages on the

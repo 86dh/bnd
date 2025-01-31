@@ -69,6 +69,7 @@ import aQute.lib.io.IO;
 import bndtools.Plugin;
 import bndtools.central.Central;
 import bndtools.central.sync.WorkspaceSynchronizer;
+import bndtools.editor.common.HelpButtons;
 import bndtools.preferences.BndPreferences;
 import bndtools.preferences.ui.BndPreferencePage;
 
@@ -114,6 +115,13 @@ public class BndtoolsExplorer extends PackageExplorerPart {
 		Control filterControl = filterPart.createControl(explorer);
 		filterPart.setHint("Filter for projects (glob)");
 
+		model.onUpdate(() -> {
+			if (Objects.equals(model.filterText, filterPart.getFilter()))
+				return;
+			filterPart.getFilterControl()
+				.setText(model.filterText);
+			filterPart.setFilter(model.filterText);
+		});
 		super.createPartControl(explorer);
 
 		Control[] children = explorer.getChildren();
@@ -231,11 +239,15 @@ public class BndtoolsExplorer extends PackageExplorerPart {
 		toolBarManager.add(pin);
 		toolBarManager.update(true);
 
+		toolBarManager.add(HelpButtons.HELP_BTN_BNDTOOLS_EXPLORER);
+		toolBarManager.update(true);
+
 		return header;
 	}
 
 	@Override
 	public void dispose() {
+		model.close();
 		closeables.forEach(IO::close);
 		super.dispose();
 	}
@@ -394,7 +406,8 @@ public class BndtoolsExplorer extends PackageExplorerPart {
 	}
 
 	private Action reloadAction() {
-		Action rebuild = new Action("Reload workspace", Icons.desc("refresh")) {
+		Action rebuild = new Action("Reload workspace (Rebuilds all projects if 'Build Automatically' is enabled)",
+			Icons.desc("refresh")) {
 			WorkspaceSynchronizer s;
 
 			@Override

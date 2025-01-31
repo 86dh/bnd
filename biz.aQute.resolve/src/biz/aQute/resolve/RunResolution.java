@@ -1,5 +1,7 @@
 package biz.aQute.resolve;
 
+import static java.util.stream.Collectors.toList;
+
 import java.io.File;
 import java.lang.annotation.Annotation;
 import java.util.ArrayList;
@@ -9,8 +11,11 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
+import java.util.function.Predicate;
 import java.util.stream.Collectors;
 
+import aQute.bnd.header.Parameters;
+import aQute.bnd.osgi.Instructions;
 import org.osgi.resource.Resource;
 import org.osgi.resource.Wire;
 import org.osgi.service.resolver.ResolutionException;
@@ -27,12 +32,15 @@ import aQute.bnd.build.model.clauses.VersionedClause;
 import aQute.bnd.exceptions.Exceptions;
 import aQute.bnd.help.Syntax;
 import aQute.bnd.help.instructions.ResolutionInstructions;
+import aQute.bnd.help.instructions.ResolutionInstructions.ResolveMode;
 import aQute.bnd.help.instructions.ResolutionInstructions.RunStartLevel;
 import aQute.bnd.help.instructions.ResolutionInstructions.Runorder;
+import aQute.bnd.osgi.BundleId;
 import aQute.bnd.osgi.Constants;
 import aQute.bnd.osgi.Processor;
 import aQute.bnd.osgi.resource.ResourceUtils;
 import aQute.bnd.osgi.resource.ResourceUtils.IdentityCapability;
+import aQute.bnd.osgi.resource.ResourceUtils.IdentityCapability.Type;
 import aQute.bnd.result.Result;
 import aQute.lib.dot.DOT;
 import aQute.lib.io.IO;
@@ -91,9 +99,17 @@ public class RunResolution {
 	 */
 	public static RunResolution resolve(Project project, Processor actualProperties,
 		Collection<ResolutionCallback> callbacks, ResolverLogger resolverLogger) {
+		if (ResolveMode.never.toString()
+			.equals(project.get(Constants.RESOLVE))) {
+			return new RunResolution(project, actualProperties, new UnsupportedOperationException(String
+				.format("Resolve is forbidden here, as %s is set to %s", Constants.RESOLVE,
+					ResolveMode.never.toString())),
+				null);
+		}
 		if (callbacks == null)
 			callbacks = Collections.emptyList();
-		ResolverLogger logger = resolverLogger == null ? new ResolverLogger() : resolverLogger;
+		ResolverLogger logger = resolverLogger == null ? ResolverLogger.newLogger(actualProperties, false)
+			: resolverLogger;
 		try {
 			try {
 				ResolveProcess resolve = new ResolveProcess();
@@ -180,6 +196,15 @@ public class RunResolution {
 		List<VersionedClause> newer = new ArrayList<>(nonNull(getRunBundles()));
 		List<VersionedClause> older = new ArrayList<>(nonNull(model.getRunBundles()));
 
+		// Apply the -runbundles decorator on the computed RunBundles
+		Parameters bundles = HeaderClause.toParameters(newer);
+		Instructions decorator = new Instructions(project.mergeProperties(Constants.RUNBUNDLES_DECORATOR));
+		decorator.decorate(bundles);
+
+		newer = bundles.entrySet()
+			.stream().map(entry -> new VersionedClause(entry.getKey(), entry.getValue()))
+			.collect(Collectors.toList());
+
 		if (newer.equals(older))
 			return false;
 
@@ -260,6 +285,8 @@ public class RunResolution {
 	 */
 	public List<VersionedClause> getRunBundles() {
 		List<Resource> orderedResources = getOrderedResources();
+		Predicate<Resource> pred = this::isBundle;
+		orderedResources.removeIf(pred.negate());
 		List<VersionedClause> versionedClauses = ResourceUtils.toVersionedClauses(orderedResources);
 		int begin = runstartlevel.begin();
 		if (begin > 0) {
@@ -274,6 +301,19 @@ public class RunResolution {
 			}
 		}
 		return versionedClauses;
+	}
+
+	/**
+	 * Gets the resolution result as a list of bundle ids that represent the new
+	 * -runbundles
+	 *
+	 * @return the BundleIds of the bundles in the resolution
+	 */
+	public List<BundleId> getResolvedRunBundles() {
+		return getOrderedResources().stream()
+			.filter(this::isBundle)
+			.map(ResourceUtils::getBundleId)
+			.collect(toList());
 	}
 
 	/**
@@ -382,8 +422,8 @@ public class RunResolution {
 
 	public RunResolution reportException() {
 		if (!isOK()) {
-			if (exception instanceof ResolutionException) {
-				project.error("Resolution failed %s", exception.getMessage());
+			if (exception instanceof ResolutionException re) {
+				project.error("Resolution failed %s", re.getMessage());
 			} else {
 				project.exception(exception, "Resolution failed unexpectedly");
 			}
@@ -392,8 +432,8 @@ public class RunResolution {
 	}
 
 	public String report(boolean optionals) {
-		if (exception instanceof ResolutionException) {
-			return ResolveProcess.format((ResolutionException) exception, optionals);
+		if (exception instanceof ResolutionException re) {
+			return ResolveProcess.format(re, optionals);
 		} else if (exception != null) {
 			return Exceptions.toString(Exceptions.unrollCause(exception));
 		} else if (log != null) {
@@ -518,6 +558,12 @@ public class RunResolution {
 	public static void clearCache(Workspace ws) {
 		File cache = ws.getCache("resolutions");
 		IO.delete(cache);
+	}
+
+	private boolean isBundle(Resource resource) {
+		IdentityCapability id = ResourceUtils.getIdentityCapability(resource);
+		Type type = id.type();
+		return id != null && (type == Type.bundle || type == Type.fragment);
 	}
 
 }

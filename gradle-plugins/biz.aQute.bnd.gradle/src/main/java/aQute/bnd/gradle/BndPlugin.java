@@ -72,7 +72,6 @@ import org.gradle.api.tasks.Delete;
 import org.gradle.api.tasks.SourceSet;
 import org.gradle.api.tasks.SourceSetContainer;
 import org.gradle.api.tasks.TaskContainer;
-import org.gradle.api.tasks.TaskInputFilePropertyBuilder;
 import org.gradle.api.tasks.TaskProvider;
 import org.gradle.api.tasks.bundling.AbstractArchiveTask;
 import org.gradle.api.tasks.compile.AbstractCompile;
@@ -90,7 +89,7 @@ import org.slf4j.LoggerFactory;
  * <p>
  * If the bndWorkspace property is set, it will be used for the bnd Workspace.
  * <p>
- * If the bnd_defaultTask property is set, it will be used for the the default
+ * If the bnd_defaultTask property is set, it will be used for the default
  * task.
  */
 public class BndPlugin implements Plugin<Project> {
@@ -112,7 +111,6 @@ public class BndPlugin implements Plugin<Project> {
 	/**
 	 * Apply the {@code biz.aQute.bnd} plugin to the specified project.
 	 */
-	@SuppressWarnings("deprecation")
 	@Override
 	public void apply(Project project) {
 		try {
@@ -144,32 +142,20 @@ public class BndPlugin implements Plugin<Project> {
 			}
 			BndPluginExtension extension = project.getExtensions()
 				.create(BndPluginExtension.NAME, BndPluginExtension.class, bndProject);
-			project.getConvention()
-				.getPlugins()
-				.put(BndPluginExtension.NAME, new BndPluginConvention(extension));
 
 			layout.getBuildDirectory()
 				.fileValue(bndProject.getTargetDir());
 			project.getPluginManager()
 				.apply("java");
-			if (isGradleCompatible("7.1")) {
-				project.getExtensions()
-					.getByType(BasePluginExtension.class)
-					.getLibsDirectory()
-					.value(layout.getBuildDirectory());
-				project.getExtensions()
-					.getByType(JavaPluginExtension.class)
-					.getTestResultsDir()
-					.value(layout.getBuildDirectory()
-						.dir(bndProject.getProperty("test-reports", "test-reports")));
-			} else {
-				project.getConvention()
-					.getPlugin(org.gradle.api.plugins.BasePluginConvention.class)
-					.setLibsDirName(".");
-				project.getConvention()
-					.getPlugin(org.gradle.api.plugins.JavaPluginConvention.class)
-					.setTestResultsDirName(bndProject.getProperty("test-reports", "test-reports"));
-			}
+			project.getExtensions()
+				.getByType(BasePluginExtension.class)
+				.getLibsDirectory()
+				.value(layout.getBuildDirectory());
+			project.getExtensions()
+				.getByType(JavaPluginExtension.class)
+				.getTestResultsDir()
+				.value(layout.getBuildDirectory()
+					.dir(bndProject.getProperty("test-reports", "test-reports")));
 			String bnd_defaultTask = (String) project.findProperty("bnd_defaultTask");
 			if (Objects.nonNull(bnd_defaultTask)) {
 				project.setDefaultTasks(Strings.split(bnd_defaultTask));
@@ -215,27 +201,24 @@ public class BndPlugin implements Plugin<Project> {
 					 * Workspace and project configuration changes should
 					 * trigger task
 					 */
-					TaskInputFilePropertyBuilder bndConfigurationInput = t.getInputs()
+					t.getInputs()
 						.files(bndConfiguration())
 						.withPathSensitivity(RELATIVE)
-						.withPropertyName("bndConfiguration");
-					if (isGradleCompatible("7.2")) {
-						bndConfigurationInput.normalizeLineEndings();
-					}
+						.withPropertyName("bndConfiguration")
+						.normalizeLineEndings();
 
 					t.getOutputs()
 						.dirs(bndProject.getGenerate()
 							.getOutputDirs())
 						.withPropertyName("generateOutputs");
-					t.doLast("generate", new Action<Task>() {
+					t.doLast("generate", new Action<>() {
 						@Override
 						public void execute(Task tt) {
 							try {
 								bndProject.getGenerate()
 									.generate(false);
 							} catch (Exception e) {
-								throw new GradleException(
-									String.format("Project %s failed to generate", bndProject.getName()), e);
+								throw new GradleException(String.format("Project %s failed to generate", bndProject.getName()), e);
 							}
 							checkErrors(tt.getLogger());
 						}
@@ -272,7 +255,8 @@ public class BndPlugin implements Plugin<Project> {
 					AbstractCompile.class, t -> {
 						t.getDestinationDirectory()
 							.fileValue(destinationDir);
-						jarLibraryElements(t, sourceSet.getCompileClasspathConfigurationName());
+						FileCollection jarLibraryElements = jarLibraryElements(t, sourceSet.getCompileClasspathConfigurationName());
+						t.setClasspath(jarLibraryElements.plus(t.getClasspath()));
 					});
 				generateInputAction.ifPresent(compileTask::configure);
 				sourceSet.getOutput()
@@ -297,7 +281,8 @@ public class BndPlugin implements Plugin<Project> {
 					AbstractCompile.class, t -> {
 						t.getDestinationDirectory()
 							.fileValue(destinationDir);
-						jarLibraryElements(t, sourceSet.getCompileClasspathConfigurationName());
+						FileCollection jarLibraryElements = jarLibraryElements(t, sourceSet.getCompileClasspathConfigurationName());
+						t.setClasspath(jarLibraryElements.plus(t.getClasspath()));
 					});
 				sourceSet.getOutput()
 					.dir(Maps.of("builtBy", compileTask.getName()), destinationDir);
@@ -310,21 +295,24 @@ public class BndPlugin implements Plugin<Project> {
 					extensions.getExtensionsSchema()
 						.forEach(schema -> {
 							String name = schema.getName();
-							Object sourceDirectorySet = extensions.getByName(name);
-							if (sourceDirectorySet instanceof SourceDirectorySet) {
-								sourceDirectorySets.put(name, (SourceDirectorySet) sourceDirectorySet);
+							Object sds = extensions.getByName(name);
+							if (sds instanceof SourceDirectorySet sourceDirectorySet) {
+								sourceDirectorySets.put(name, sourceDirectorySet);
 							}
 						});
-					new DslObject(sourceSet).getConvention()
-						.getPlugins()
-						.forEach((name, plugin) -> {
+					if (!isGradleCompatible("8.0")) { // only for pre 8.0
+						@SuppressWarnings("deprecation")
+						Map<String, Object> plugins = new DslObject(sourceSet).getConvention()
+							.getPlugins();
+						plugins.forEach((name, plugin) -> {
 							if (!sourceDirectorySets.containsKey(name)) {
-								Object sourceDirectorySet = getter(plugin, name);
-								if (sourceDirectorySet instanceof SourceDirectorySet) {
-									sourceDirectorySets.put(name, (SourceDirectorySet) sourceDirectorySet);
+								Object sds = getter(plugin, name);
+								if (sds instanceof SourceDirectorySet sourceDirectorySet) {
+									sourceDirectorySets.put(name, sourceDirectorySet);
 								}
 							}
 						});
+					}
 					Provider<Directory> destinationDir = sourceSet.getJava()
 						.getClassesDirectory();
 					TaskProvider<Task> processResourcesTask = tasks.named(sourceSet.getProcessResourcesTaskName());
@@ -356,21 +344,24 @@ public class BndPlugin implements Plugin<Project> {
 					extensions.getExtensionsSchema()
 						.forEach(schema -> {
 							String name = schema.getName();
-							Object sourceDirectorySet = extensions.getByName(name);
-							if (sourceDirectorySet instanceof SourceDirectorySet) {
-								sourceDirectorySets.put(name, (SourceDirectorySet) sourceDirectorySet);
+							Object sds = extensions.getByName(name);
+							if (sds instanceof SourceDirectorySet sourceDirectorySet) {
+								sourceDirectorySets.put(name, sourceDirectorySet);
 							}
 						});
-					new DslObject(sourceSet).getConvention()
-						.getPlugins()
-						.forEach((name, plugin) -> {
+					if (!isGradleCompatible("8.0")) { // only for pre 8.0
+						@SuppressWarnings("deprecation")
+						Map<String, Object> plugins = new DslObject(sourceSet).getConvention()
+							.getPlugins();
+						plugins.forEach((name, plugin) -> {
 							if (!sourceDirectorySets.containsKey(name)) {
-								Object sourceDirectorySet = getter(plugin, name);
-								if (sourceDirectorySet instanceof SourceDirectorySet) {
-									sourceDirectorySets.put(name, (SourceDirectorySet) sourceDirectorySet);
+								Object sds = getter(plugin, name);
+								if (sds instanceof SourceDirectorySet sourceDirectorySet) {
+									sourceDirectorySets.put(name, sourceDirectorySet);
 								}
 							}
 						});
+					}
 					Provider<Directory> destinationDir = sourceSet.getJava()
 						.getClassesDirectory();
 					TaskProvider<Task> processResourcesTask = tasks.named(sourceSet.getProcessResourcesTaskName());
@@ -421,17 +412,10 @@ public class BndPlugin implements Plugin<Project> {
 			boolean javacDebug = bndProject.is("javac.debug");
 			boolean javacDeprecation = isTrue(bndProject.getProperty("javac.deprecation", "true"));
 			String javacEncoding = bndProject.getProperty("javac.encoding", "UTF-8");
-			if (isGradleCompatible("7.1")) {
-				JavaPluginExtension javaPlugin = project.getExtensions()
-					.getByType(JavaPluginExtension.class);
-				javacSource.ifPresent(javaPlugin::setSourceCompatibility);
-				javacTarget.ifPresent(javaPlugin::setTargetCompatibility);
-			} else {
-				org.gradle.api.plugins.JavaPluginConvention javaPlugin = project.getConvention()
-					.getPlugin(org.gradle.api.plugins.JavaPluginConvention.class);
-				javacSource.ifPresent(javaPlugin::setSourceCompatibility);
-				javacTarget.ifPresent(javaPlugin::setTargetCompatibility);
-			}
+			JavaPluginExtension javaPlugin = project.getExtensions()
+				.getByType(JavaPluginExtension.class);
+			javacSource.ifPresent(javaPlugin::setSourceCompatibility);
+			javacTarget.ifPresent(javaPlugin::setTargetCompatibility);
 			tasks.withType(JavaCompile.class)
 				.configureEach(t -> {
 					CompileOptions options = t.getOptions();
@@ -451,7 +435,7 @@ public class BndPlugin implements Plugin<Project> {
 									JavaVersion sourceVersion = JavaVersion.toVersion(javacSource.get());
 									JavaVersion targetVersion = JavaVersion.toVersion(javacTarget.get());
 									if (Objects.equals(sourceVersion, targetVersion) && javacBootclasspath.isEmpty()
-										&& !javacProfile.isPresent()) {
+										&& javacProfile.isEmpty()) {
 										return Integer.valueOf(sourceVersion.getMajorVersion());
 									}
 								}
@@ -479,7 +463,7 @@ public class BndPlugin implements Plugin<Project> {
 					}
 					options.getCompilerArgumentProviders()
 						.add(argProvider(javacProfile.map(profile -> Arrays.asList("-profile", profile))));
-					t.doFirst("checkErrors", new Action<Task>() {
+					t.doFirst("checkErrors", new Action<>() {
 						@Override
 						public void execute(Task tt) {
 							Logger logger = tt.getLogger();
@@ -557,8 +541,9 @@ public class BndPlugin implements Plugin<Project> {
 						.withPropertyName("projectFolder");
 					/* bnd can include from -buildpath */
 					t.getInputs()
-						.files(sourceSets.getByName(SourceSet.MAIN_SOURCE_SET_NAME)
-							.getCompileClasspath())
+						.files(tasks.named(sourceSets.getByName(SourceSet.MAIN_SOURCE_SET_NAME)
+								.getCompileJavaTaskName(), AbstractCompile.class)
+							.map(AbstractCompile::getClasspath))
 						.withNormalizer(ClasspathNormalizer.class)
 						.withPropertyName("buildpath");
 					/* bnd can include from -dependson */
@@ -569,13 +554,11 @@ public class BndPlugin implements Plugin<Project> {
 					 * Workspace and project configuration changes should
 					 * trigger jar task
 					 */
-					TaskInputFilePropertyBuilder bndConfigurationInput = t.getInputs()
+					t.getInputs()
 						.files(bndConfiguration())
 						.withPathSensitivity(RELATIVE)
-						.withPropertyName("bndConfiguration");
-					if (isGradleCompatible("7.2")) {
-						bndConfigurationInput.normalizeLineEndings();
-					}
+						.withPropertyName("bndConfiguration")
+						.normalizeLineEndings();
 					t.getOutputs()
 						.files(deliverables)
 						.withPropertyName("artifacts");
@@ -583,7 +566,7 @@ public class BndPlugin implements Plugin<Project> {
 						.file(layout.getBuildDirectory()
 							.file(Constants.BUILDFILES))
 						.withPropertyName("buildfiles");
-					t.doLast("build", new Action<Task>() {
+					t.doLast("build", new Action<>() {
 						@Override
 						public void execute(Task tt) {
 							File[] built;
@@ -636,7 +619,7 @@ public class BndPlugin implements Plugin<Project> {
 				t.getInputs()
 					.files(jar)
 					.withPropertyName(jar.getName());
-				t.doLast("release", new Action<Task>() {
+				t.doLast("release", new Action<>() {
 					@Override
 					public void execute(Task tt) {
 						try {
@@ -668,7 +651,7 @@ public class BndPlugin implements Plugin<Project> {
 				t.getInputs()
 					.files(getBuildDependencies(JavaPlugin.JAR_TASK_NAME))
 					.withPropertyName("buildDependencies");
-				t.doFirst("checkErrors", new Action<Task>() {
+				t.doFirst("checkErrors", new Action<>() {
 					@Override
 					public void execute(Task tt) {
 						checkErrors(tt.getLogger(), t.getIgnoreFailures());
@@ -816,7 +799,7 @@ public class BndPlugin implements Plugin<Project> {
 				JavaCompile compileJava = unwrap(tasks.named(JavaPlugin.COMPILE_JAVA_TASK_NAME, JavaCompile.class));
 				JavaCompile compileTestJava = unwrap(
 					tasks.named(JavaPlugin.COMPILE_TEST_JAVA_TASK_NAME, JavaCompile.class));
-				t.doLast("echo", new Action<Task>() {
+				t.doLast("echo", new Action<>() {
 					@Override
 					public void execute(Task tt) {
 						try (Formatter f = new Formatter()) {
@@ -883,7 +866,7 @@ public class BndPlugin implements Plugin<Project> {
 			TaskProvider<Task> bndproperties = tasks.register("bndproperties", t -> {
 				t.setDescription("Displays the bnd properties.");
 				t.setGroup(HelpTasksPlugin.HELP_GROUP);
-				t.doLast("bndproperties", new Action<Task>() {
+				t.doLast("bndproperties", new Action<>() {
 					@Override
 					public void execute(Task tt) {
 						try (Formatter f = new Formatter()) {
@@ -979,7 +962,7 @@ public class BndPlugin implements Plugin<Project> {
 			@SuppressWarnings("unchecked")
 			@Override
 			public Iterable<String> asArguments() {
-				return provider.orElseGet(() -> (ITERABLE) Collections.<String> emptyList());
+				return provider.orElse((ITERABLE) Collections.<String> emptyList());
 			}
 		};
 	}
@@ -1023,7 +1006,7 @@ public class BndPlugin implements Plugin<Project> {
 	}
 
 	private Optional<String> optional(String value) {
-		return Strings.nonNullOrEmpty(value) ? Optional.of(value) : Optional.empty();
+		return Optional.ofNullable(value).filter(Strings::notEmpty);
 	}
 
 	private static Object getter(Object target, String name) {

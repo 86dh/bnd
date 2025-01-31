@@ -1,6 +1,7 @@
 package test.baseline;
 
 import static aQute.bnd.osgi.Constants.BUNDLE_SYMBOLICNAME;
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
@@ -21,6 +22,7 @@ import java.util.Set;
 import java.util.TreeSet;
 import java.util.regex.Pattern;
 
+import aQute.bnd.osgi.*;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 
@@ -31,12 +33,6 @@ import aQute.bnd.differ.Baseline;
 import aQute.bnd.differ.Baseline.BundleInfo;
 import aQute.bnd.differ.Baseline.Info;
 import aQute.bnd.differ.DiffPluginImpl;
-import aQute.bnd.osgi.Analyzer;
-import aQute.bnd.osgi.Builder;
-import aQute.bnd.osgi.Constants;
-import aQute.bnd.osgi.Jar;
-import aQute.bnd.osgi.Processor;
-import aQute.bnd.osgi.Verifier;
 import aQute.bnd.service.RepositoryPlugin;
 import aQute.bnd.service.diff.Delta;
 import aQute.bnd.service.diff.Diff;
@@ -50,7 +46,7 @@ import aQute.libg.reporter.ReporterAdapter;
 @SuppressWarnings("resource")
 public class BaselineTest {
 
-	Workspace	workspace;
+	Workspace workspace;
 
 	private Workspace getWorkspace(File tmp) throws Exception {
 		if (workspace != null)
@@ -64,6 +60,94 @@ public class BaselineTest {
 	protected void tearDown() throws Exception {
 		IO.close(workspace);
 		workspace = null;
+	}
+
+	public static class PrivateConstructorsAndFinal {
+		public class Normal {}
+
+		public class Private {
+			private Private() {}
+		}
+
+		public class PrivateMultiple {
+			private PrivateMultiple() {}
+
+			private PrivateMultiple(int a) {}
+
+			private PrivateMultiple(int a, int b) {}
+
+			private PrivateMultiple(int a, int b, int c) {}
+		}
+
+		public class ProtectedPrivate {
+			protected ProtectedPrivate(int x) {}
+		}
+
+		public final class PrivateFinal {
+			private PrivateFinal() {}
+		}
+
+		public final class Final {}
+
+	}
+
+	@Test
+	public void testTreatingPrivateConstructorsAsFinalClass() throws Exception {
+		DiffPluginImpl diff = new DiffPluginImpl();
+		diff.setIgnore("METHOD");
+		try (Builder b = new Builder()) {
+			b.addClasspath(IO.getFile("bin_test"));
+			b.setProperty("Export-Package", "test.baseline");
+			Jar build = b.build();
+			assertThat(b.check()).isTrue();
+			Tree tree = diff.tree(b);
+			Tree pack = tree.get("<api>")
+				.get("test.baseline");
+			Tree Normal = pack.get("test.baseline.BaselineTest$PrivateConstructorsAndFinal$Normal");
+			Tree Final = pack.get("test.baseline.BaselineTest$PrivateConstructorsAndFinal$Final");
+			Tree PrivateFinal = pack.get("test.baseline.BaselineTest$PrivateConstructorsAndFinal$PrivateFinal");
+			Tree Private = pack.get("test.baseline.BaselineTest$PrivateConstructorsAndFinal$Private");
+			Tree ProtectedPrivate = pack.get("test.baseline.BaselineTest$PrivateConstructorsAndFinal$ProtectedPrivate");
+			Tree PrivateMultiple = pack.get("test.baseline.BaselineTest$PrivateConstructorsAndFinal$PrivateMultiple");
+
+			assertThat(Normal).isNotNull();
+			assertThat(Final).isNotNull();
+			assertThat(PrivateFinal).isNotNull();
+			assertThat(Private).isNotNull();
+			assertThat(ProtectedPrivate).isNotNull();
+			assertThat(PrivateMultiple).isNotNull();
+
+			assertThat(Normal.get("final")).isNull();
+			assertThat(PrivateFinal.get("final")).isNotNull();
+			assertThat(Private.get("final")).isNotNull();
+			assertThat(Final.get("final")).isNotNull();
+			assertThat(ProtectedPrivate.get("final")).isNull();
+			assertThat(PrivateMultiple.get("final")).isNotNull();
+
+			Tree[] ORDER = new Tree[] {
+				Normal, Final, PrivateFinal,Private
+			};
+			Delta[][] deltas = new Delta[][] {
+				{
+					Delta.UNCHANGED, Delta.MAJOR, Delta.MAJOR, Delta.MAJOR
+				}, {
+					Delta.MINOR, Delta.UNCHANGED, Delta.MAJOR, Delta.MAJOR
+				}, {
+					Delta.MINOR, Delta.MINOR, Delta.UNCHANGED, Delta.UNCHANGED
+				}, {
+					Delta.MINOR, Delta.MINOR, Delta.UNCHANGED, Delta.UNCHANGED
+				},
+			};
+			for (int y = 0; y < ORDER.length; y++) {
+				for (int x = 0; x < ORDER.length; x++) {
+					Tree older = ORDER[y];
+					Tree newer = ORDER[x];
+					System.out.println(newer.diff(older));
+					assertThat(newer.diff(older)
+						.getDelta()).isEqualTo(deltas[y][x]);
+				}
+			}
+		}
 	}
 
 	/**
@@ -532,6 +616,32 @@ public class BaselineTest {
 			baseline.baseline(newer, older, null);
 
 			BundleInfo bundleInfo = baseline.getBundleInfo();
+
+			assertTrue(bundleInfo.mismatch);
+			assertEquals("1.1.0", bundleInfo.suggestedVersion.toString());
+		}
+	}
+
+	@Test
+	public void testMinorChangeSuppressedByThreshold() throws Exception {
+		Processor processor = new Processor();
+
+		DiffPluginImpl differ = new DiffPluginImpl();
+		Baseline baseline = new Baseline(processor, differ);
+
+		try (Jar older = new Jar(IO.getFile("testresources/minor-and-removed-change-1.0.0.jar"));
+			 Jar newer = new Jar(IO.getFile("testresources/minor-change-1.0.1.jar"));) {
+
+			baseline.baseline(newer, older, new Instructions("*;threshold=MAJOR"));
+
+			BundleInfo bundleInfo = baseline.getBundleInfo();
+
+			assertFalse(bundleInfo.mismatch);
+			assertEquals(bundleInfo.newerVersion.toString(), bundleInfo.suggestedVersion.toString());
+
+			baseline.baseline(newer, older, new Instructions("*;threshold=MINOR"));
+
+			bundleInfo = baseline.getBundleInfo();
 
 			assertTrue(bundleInfo.mismatch);
 			assertEquals("1.1.0", bundleInfo.suggestedVersion.toString());

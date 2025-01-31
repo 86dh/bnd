@@ -4,9 +4,6 @@
 ## Java Compiler Options
 #java:                  java
 #javac:                 javac
-javac.source:           1.8
-javac.target:           1.8
-javac.compliance:       1.8
 javac.debug:            on
 -noimportjava: true
 
@@ -20,9 +17,9 @@ Git-Descriptor:         ${system-allow-fail;git describe --dirty --always --abbr
 Git-SHA:                ${system-allow-fail;git rev-list -1 --no-abbrev-commit HEAD}
 
 # This is the version to baseline this build against. See cnf/ext/baseline.mvn.
-baseline.version:       6.3.0
+baseline.version:       7.1.0
 # biz.aQute.bndlib:aQute.bnd.osgi.About.CURRENT needs to be kept in sync with the base.version.
-base.version:           7.0.0
+base.version:           7.2.0
 Bundle-Version:         ${base.version}.${tstamp}-SNAPSHOT
 # Don't baseline Bundle-Version
 -diffignore:            Bundle-Version

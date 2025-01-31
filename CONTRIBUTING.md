@@ -15,16 +15,36 @@ The only thing you need to build Bnd/Bndtools is Java.
 We require at least Java 8.
 We use Gradle and Maven to build and the repo includes `gradlew` and `mvnw` at the necessary versions.
 
-- `./gradlew :build` - Assembles and tests the Bnd Workspace projects. This must be run before building the Bnd Maven and Gradle plugins.
+Some more instructions how to get started with bndtools development in Eclipse can be found [here](https://bndtools.org/development.html).
+
+- `./gradlew :build` (or `./gradlew build -x test` to skip tests for faster local builds) - Assembles and tests the Bnd Workspace projects. This must be run before building the Bnd Maven and Gradle plugins.
 - `./gradlew :gradle-plugins:build` - Assembles and tests the Bnd Gradle plugins.
-- `./mvnw --file=maven install` - Assembles and tests the Bnd Maven plugins.
+- `./mvnw install` - Assembles and tests the Bnd Maven plugins.
 - `./gradlew :publish` - Assembles and publishes the Bnd Workspace projects into `dist/bundles`.
 - `./gradlew :gradle-plugins:publish` - Assembles and publishes the Bnd Gradle plugins into `dist/bundles`.
-- `./mvnw -Pdist --file=maven deploy` - Assembles and publishes the Bnd Maven plugins into `dist/bundles`.
+- `./mvnw -Pdist deploy` - Assembles and publishes the Bnd Maven plugins into `dist/bundles`.
+
+Rebuilding: bnd is built with bnd. For that reason we rebuild and retest bnd with the build we just built.
+To do a full build-rebuild cycle (like the github build), you can use the following command:
+
+`./gradlew :build ; ./gradlew :gradle-plugins:build ; ./.github/scripts/rebuild-build.sh ; ./.github/scripts/rebuild-test.sh`
+
 
 We use [GitHub Actions](https://github.com/bndtools/bnd/actions?query=workflow%3A%22CI%20Build%22) for continuous integration and the repo includes a `.github/workflows/cibuild.yml` file to build via GitHub Actions.
 
 We use [CodeQL](https://github.com/bndtools/bnd/security/code-scanning?query=tool%3ACodeQL) for continuous security analysis. Pull requests are automatically code scanned.
+
+### Gradle Wrapper
+
+bnd uses [Gradle Wrapper](https://docs.gradle.org/current/userguide/gradle_wrapper.html).
+To update the gradle wrapper locally to a new gradle version (e.g. to test building on a higher JDK) just run the following command:
+
+`gradle wrapper --gradle-version X.XX` (replace X.XX with your gradle version)
+
+This generates new gradle wrapper files.
+Additionally consider adding the version to `gradle-plugins/biz.aQute.bnd.gradle/src/test/groovy/aQute/bnd/gradle/TestHelper.groovy` in the method `gradleVersion()`.
+
+If you think this new gradle wrapper might be worth a contribution to bnd, feel free to open a PR.
 
 ## Workflow
 
@@ -144,23 +164,23 @@ The rules are pretty simple: if you can certify the below (from [developercertif
 
     Developer Certificate of Origin
     Version 1.1
-    
+
     Copyright (C) 2004, 2006 The Linux Foundation and its contributors.
     1 Letterman Drive
     Suite D4700
     San Francisco, CA, 94129
-    
+
     Everyone is permitted to copy and distribute verbatim copies of this
     license document, but changing it is not allowed.
-    
+
     Developer's Certificate of Origin 1.1
-    
+
     By making a contribution to this project, I certify that:
-    
+
     (a) The contribution was created in whole or in part by me and I
         have the right to submit it under the open source license
         indicated in the file; or
-    
+
     (b) The contribution is based upon previous work that, to the best
         of my knowledge, is covered under an appropriate open source
         license and I have the right under that license to submit that
@@ -168,11 +188,11 @@ The rules are pretty simple: if you can certify the below (from [developercertif
         by me, under the same open source license (unless I am
         permitted to submit under a different license), as indicated
         in the file; or
-    
+
     (c) The contribution was provided directly to me by some other
         person who certified (a), (b) or (c) and I have not modified
         it.
-    
+
     (d) I understand and agree that this project and the contribution
         are public and that a record of the contribution (including all
         personal information I submit with it, including my sign-off) is

@@ -198,6 +198,27 @@ public class DSAnnotationTest {
 	// #2876
 	@Test
 	public void testExportComponentImplPackage() throws Exception {
+		// exports with version should be added to imports
+		try (Builder b = new Builder()) {
+			b.setProperty(Constants.DSANNOTATIONS, "test.component.ds14.*");
+			b.setProperty("Export-Package", "test.component.ds14;version=1.1.0");
+			b.addClasspath(new File("bin_test"));
+			Jar jar = b.build();
+
+			if (!b.check())
+				fail();
+			Domain domain = Domain.domain(jar.getManifest());
+			Parameters exportPackages = domain.getExportPackage();
+			assertThat(exportPackages).containsOnlyKeys("test.component.ds14");
+			Parameters importPackages = domain.getImportPackage();
+			assertThat(importPackages).containsKeys("test.component.ds14");
+		}
+	}
+
+	// #2876
+	@Test
+	public void testExportComponentImplPackage2() throws Exception {
+		// exports without version should not be added to imports
 		try (Builder b = new Builder()) {
 			b.setProperty(Constants.DSANNOTATIONS, "test.component.ds14.*");
 			b.setProperty("Export-Package", "test.component.ds14");
@@ -210,7 +231,7 @@ public class DSAnnotationTest {
 			Parameters exportPackages = domain.getExportPackage();
 			assertThat(exportPackages).containsOnlyKeys("test.component.ds14");
 			Parameters importPackages = domain.getImportPackage();
-			assertThat(importPackages).containsKeys("test.component.ds14");
+			assertThat(importPackages).doesNotContainKeys("test.component.ds14");
 		}
 	}
 
@@ -263,6 +284,114 @@ public class DSAnnotationTest {
 		xt.assertAttribute("Float", "scr:component/property[@name='float']/@type");
 		xt.assertAttribute("Double", "scr:component/property[@name='double']/@type");
 		xt.assertAttribute("Integer", "scr:component/property[@name='\u0343\u0344\u0345\u0346']/@type");
+	}
+
+	/**
+	 * Property test (missing properties files)
+	 */
+
+	@Component(properties = {
+		"some.missing.file.prop"
+	})
+	public static class PropertiesTestMissingFile {
+
+	}
+
+	@Test
+	public void testProperties_missingFile_warnings() throws Exception {
+		Builder b = new Builder();
+		b.setProperty(Constants.DSANNOTATIONS, "test.component.*$PropertiesTestMissingFile");
+		b.setProperty("Private-Package", "test.component");
+		b.addClasspath(new File("bin_test"));
+
+		Jar jar = b.build();
+		assertThat(b.getWarnings()).as("size")
+			.hasSize(1);
+		assertThat(b.getWarnings()
+			.get(0)).as("warning")
+				.contains("properties")
+				.contains(PropertiesTestMissingFile.class.getName())
+				.contains("not found")
+				.contains("some.missing.file.prop")
+				.doesNotMatch(".*mean.*property.*[?]");
+	}
+
+	@Component(factoryProperties = {
+		"some.missing.file.prop"
+	})
+	public static class FactoryPropertiesTestMissingFile {
+
+	}
+
+	@Test
+	public void testFactoryProperties_missingFile_warnings() throws Exception {
+		Builder b = new Builder();
+		b.setProperty(Constants.DSANNOTATIONS, "test.component.*$FactoryPropertiesTestMissingFile");
+		b.setProperty("Private-Package", "test.component");
+		b.addClasspath(new File("bin_test"));
+
+		Jar jar = b.build();
+		assertThat(b.getWarnings()).as("size")
+			.hasSize(1);
+		assertThat(b.getWarnings()
+			.get(0)).as("warning")
+				.contains("factoryProperties")
+				.contains(FactoryPropertiesTestMissingFile.class.getName())
+				.contains("not found")
+				.contains("some.missing.file.prop")
+				.doesNotMatch(".*mean.*factoryProperty.*[?]");
+	}
+
+	@Component(properties = {
+		"some=value"
+	})
+	public static class PropertiesTestMisconfiguredProperty {
+
+	}
+
+	@Test
+	public void testProperties_misconfiguredProperty_warnings() throws Exception {
+		Builder b = new Builder();
+		b.setProperty(Constants.DSANNOTATIONS, "test.component.*$PropertiesTestMisconfiguredProperty");
+		b.setProperty("Private-Package", "test.component");
+		b.addClasspath(new File("bin_test"));
+
+		Jar jar = b.build();
+		assertThat(b.getWarnings()).as("size")
+			.hasSize(1);
+		assertThat(b.getWarnings()
+			.get(0)).as("warning")
+				.contains("properties")
+				.contains(PropertiesTestMisconfiguredProperty.class.getName())
+				.contains("not found")
+				.contains("some=value")
+				.matches(".*mean.*property.*[?]");
+	}
+
+	@Component(factoryProperties = {
+		"some=value"
+	})
+	public static class FactoryPropertiesTestMisconfiguredProperty {
+
+	}
+
+	@Test
+	public void testFactoryProperties_misconfiguredProperty_warnings() throws Exception {
+		Builder b = new Builder();
+		b.setProperty(Constants.DSANNOTATIONS, "test.component.*$FactoryPropertiesTestMisconfiguredProperty");
+		b.setProperty("Private-Package", "test.component");
+		b.addClasspath(new File("bin_test"));
+
+		Jar jar = b.build();
+		assertThat(b.getWarnings()).as("size")
+			.hasSize(1);
+		assertThat(b.getWarnings()
+			.get(0)).as("warning")
+				.contains("factoryProperties")
+				.contains(FactoryPropertiesTestMisconfiguredProperty.class.getName())
+				.contains("not found")
+				.contains("some=value")
+				.matches(".*mean.*factoryProperty.*[?]");
 	}
 
 	/**
@@ -3673,46 +3802,6 @@ public class DSAnnotationTest {
 
 	}
 
-	@Component(name = "mixed-std-bnd")
-	static class MixedStdBnd {
-
-		@aQute.bnd.annotation.component.Reference
-		@SuppressWarnings("deprecation")
-		protected void setLog(@SuppressWarnings("unused") LogService log) {}
-
-		@aQute.bnd.annotation.component.Activate
-		@SuppressWarnings("deprecation")
-		void start() {}
-
-		@aQute.bnd.annotation.component.Modified
-		@SuppressWarnings("deprecation")
-		void update(Map<String, Object> map) {}
-
-		@aQute.bnd.annotation.component.Deactivate
-		@SuppressWarnings("deprecation")
-		void stop() {}
-	}
-
-	@Test
-	public void testMixedStandardBnd() throws Exception {
-		try (Builder b = new Builder()) {
-			b.setProperty(Constants.DSANNOTATIONS, "test.component.DSAnnotationTest$MixedStdBnd");
-			b.setProperty("Private-Package", "test.component");
-			b.addClasspath(new File("bin_test"));
-			Jar build = b.build();
-			System.err.println(b.getErrors());
-			System.err.println(b.getWarnings());
-			assertThat("foo");
-			assertThat(b.getErrors())
-				.anyMatch(e -> e.matches(".*MixedStdBnd\\.stop.*aQute\\.bnd\\.annotation\\.component\\.Deactivate.*"))
-				.anyMatch(e -> e.matches(".*MixedStdBnd\\.update.*aQute\\.bnd\\.annotation\\.component\\.Modified.*"))
-				.anyMatch(e -> e.matches(".*MixedStdBnd\\.start.*aQute\\.bnd\\.annotation\\.component\\.Activate.*"))
-				.anyMatch(e -> e.matches(".*MixedStdBnd\\.setLog.*aQute\\.bnd\\.annotation\\.component\\.Reference.*"))
-				.hasSize(4);
-			assertThat(b.getWarnings()).isEmpty();
-		}
-	}
-
 	@Component
 	static class VolatileField {
 		@Reference
@@ -4435,7 +4524,6 @@ public class DSAnnotationTest {
 			assertOk(b);
 			Attributes a = getAttr(jar);
 			checkProvides(a);
-			checkRequires(a, ComponentConstants.COMPONENT_SPECIFICATION_VERSION, AnyService.class.getName());
 
 			//
 			// Test all the defaults
@@ -4481,6 +4569,25 @@ public class DSAnnotationTest {
 			xt.assertAttribute("1", "scr:component/reference[@name='extensionsParam']/@parameter");
 			xt.assertAttribute("0..n", "scr:component/reference[@name='extensionsParam']/@cardinality");
 
+		}
+	}
+
+	@Test
+	public void anyserviceNoServiceRequirement() throws Exception {
+		try (Builder b = new Builder()) {
+			b.setProperty(Constants.DSANNOTATIONS, "test.component.DSAnnotationTest$AnyServiceUse");
+			b.setProperty("Private-Package", "test.component");
+			b.addClasspath(new File("bin_test"));
+
+			Jar jar = b.build();
+			assertOk(b);
+			Attributes a = getAttr(jar);
+			checkProvides(a);
+
+			jar.getManifest()
+				.write(System.out);
+
+			assertThat(a.getValue(Constants.REQUIRE_CAPABILITY)).doesNotContain(AnyService.class.getName());
 		}
 	}
 

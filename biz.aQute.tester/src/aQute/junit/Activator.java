@@ -33,6 +33,7 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.BlockingDeque;
 import java.util.concurrent.LinkedBlockingDeque;
+import java.util.concurrent.TimeUnit;
 import java.util.function.Supplier;
 import java.util.regex.Pattern;
 import java.util.stream.Stream;
@@ -51,6 +52,7 @@ import org.osgi.framework.wiring.BundleWire;
 import org.osgi.framework.wiring.BundleWiring;
 import org.osgi.util.tracker.BundleTracker;
 
+import aQute.junit.system.BndSystem;
 import junit.framework.JUnit4TestAdapter;
 import junit.framework.Test;
 import junit.framework.TestCase;
@@ -125,7 +127,7 @@ public class Activator implements BundleActivator, Runnable {
 				jUnitEclipseReport = new JUnitEclipseReport(port);
 			} catch (Exception e) {
 				System.err.println("Cannot create link Eclipse JUnit on port " + port);
-				System.exit(254);
+				BndSystem.exit(254);
 			}
 		}
 
@@ -172,7 +174,7 @@ public class Activator implements BundleActivator, Runnable {
 					// ignore
 				}
 				if (err != 0) {
-					System.exit(err);
+					BndSystem.exit(err);
 				}
 			}
 		}
@@ -196,10 +198,10 @@ public class Activator implements BundleActivator, Runnable {
 				try (Writer report = getReportWriter(reportDir, reportDir.getName())) {
 					errors = test(null, testCases(testcases), report);
 				}
-				System.exit(errors);
+				BndSystem.exit(errors);
 			} catch (Exception e) {
 				e.printStackTrace();
-				System.exit(254);
+				BndSystem.exit(254);
 			}
 		}
 	}
@@ -257,18 +259,28 @@ public class Activator implements BundleActivator, Runnable {
 
 		trace("starting queue");
 		int result = 0;
+		long timeout = continuous ? Long.MAX_VALUE : 5000;
 		while (active()) {
 			try {
-				Bundle bundle = queue.takeFirst();
-				trace("received bundle to test: %s", bundle.getLocation());
-				try (Writer report = getReportWriter(reportDir, bundleReportName(bundle))) {
-					trace("test will run");
-					result += test(bundle, testCases(bundle), report);
-					trace("test ran");
+
+				//
+				// it would be more logical to check for an empty queue here
+				// and !continuous but many tests cases assume that we
+				// will wait for at least 1 test case.
+				//
+
+				Bundle bundle = queue.pollFirst(timeout, TimeUnit.MILLISECONDS);
+				if (bundle != null) {
+					trace("received bundle to test: %s", bundle.getLocation());
+					try (Writer report = getReportWriter(reportDir, bundleReportName(bundle))) {
+						trace("test will run");
+						result += test(bundle, testCases(bundle), report);
+						trace("test ran");
+					}
 				}
 				if (queue.isEmpty() && !continuous) {
 					trace("queue %s", queue);
-					System.exit(result);
+					BndSystem.exit(result);
 				}
 			} catch (InterruptedException e) {
 				trace("tests bundle queue interrupted");
@@ -276,7 +288,7 @@ public class Activator implements BundleActivator, Runnable {
 				break;
 			} catch (Exception e) {
 				error("Not sure what happened anymore %s", e);
-				System.exit(254);
+				BndSystem.exit(254);
 			}
 		}
 	}

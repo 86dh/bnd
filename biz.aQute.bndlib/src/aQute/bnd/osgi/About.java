@@ -11,6 +11,7 @@ import java.util.function.Supplier;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import aQute.bnd.build.Workspace;
 import aQute.bnd.memoize.Memoize;
 import aQute.bnd.unmodifiable.Maps;
 import aQute.bnd.version.Version;
@@ -71,8 +72,11 @@ public class About {
 	public static final Version					_6_3		= new Version(6, 3, 0);
 	public static final Version					_6_4		= new Version(6, 4, 0);
 	public static final Version					_7_0		= new Version(7, 0, 0);
-	public static final Version					CURRENT		= _7_0;
+	public static final Version					_7_1		= new Version(7, 1, 0);
+	public static final Version					_7_2		= new Version(7, 2, 0);
+	public static final Version					CURRENT		= _7_2;
 
+	public static final String[]				CHANGES_7_1	= {};
 	public static final String[]				CHANGES_7_0	= {};
 	public static final String[]				CHANGES_6_4	= {};
 	public static final String[]				CHANGES_6_3	= {};
@@ -246,6 +250,7 @@ public class About {
 
 	public static final Map<Version, String[]>	CHANGES		= Maps.ofEntries(
 		// In decreasing order
+		Maps.entry(_7_1, CHANGES_7_1),																																							//
 		Maps.entry(_7_0, CHANGES_7_0),																																							//
 		Maps.entry(_6_4, CHANGES_6_4),																																							//
 		Maps.entry(_6_3, CHANGES_6_3),																																							//
@@ -300,4 +305,47 @@ public class About {
 	public static String getBndVersion() {
 		return getBndInfo("version", About.CURRENT::toString);
 	}
+
+	/**
+	 * bnd version specific defaults. Unfortunately the defaults ended up in the
+	 * build package instead of here.
+	 */
+	public static Properties versionDefaults = new Properties() {
+		private static final long serialVersionUID = 1L;
+		{
+			try {
+				String file = CURRENT + ".bnd";
+				super.load(Workspace.class.getResourceAsStream(file));
+			} catch (IOException e) {
+				logger.error("could not load version defaults for version {}", CURRENT, e);
+			}
+		}
+	};
+
+	/**
+	 * Fixup a Processor to include the version defaults. If the
+	 * {@link Constants#VERSIONDEFAULTS} is set, nothing will happen. Otherwise
+	 * any property in the {@link #versionDefaults} that is not set in p will be
+	 * set with the value from the defaults.
+	 *
+	 * @param <T> the type of the Processor
+	 * @param p the processor
+	 * @return the same processor as given.
+	 */
+	public static <T extends Processor> T fixup(T p) {
+		Properties props = p.getProperties();
+
+		if (props == null || props.getProperty(Constants.VERSIONDEFAULTS) != null)
+			return p;
+
+		versionDefaults.forEach((k, v) -> {
+			String key = (String) k;
+			String value = (String) v;
+			if (props.getProperty(key) == null) {
+				props.setProperty(key, value);
+			}
+		});
+		return p;
+	}
+
 }

@@ -30,8 +30,11 @@ import aQute.bnd.exceptions.FunctionWithException;
 import aQute.bnd.header.Attrs;
 import aQute.bnd.header.Parameters;
 import aQute.bnd.memoize.Memoize;
+import aQute.bnd.osgi.Descriptors;
+import aQute.bnd.osgi.Jar;
 import aQute.bnd.osgi.Processor;
 import aQute.bnd.osgi.Processor.CL;
+import aQute.bnd.osgi.Resource;
 import aQute.bnd.osgi.resource.MainClassNamespace;
 import aQute.bnd.result.Result;
 import aQute.bnd.service.Plugin;
@@ -90,7 +93,8 @@ public class WorkspaceExternalPluginHandler implements AutoCloseable {
 			}, WorkspaceExternalPluginHandler.class.getClassLoader())) {
 				@SuppressWarnings("unchecked")
 				Class<?> impl = cl.loadClass(className);
-				T instance = c.cast(impl.newInstance());
+				T instance = c.cast(impl.getConstructor()
+					.newInstance());
 				try {
 					return f.apply(instance);
 				} catch (Exception e) {
@@ -109,6 +113,8 @@ public class WorkspaceExternalPluginHandler implements AutoCloseable {
 		List<String> args, InputStream stdin, OutputStream stdout, OutputStream stderr) {
 		List<File> cp = new ArrayList<>();
 		try {
+			String mainClassBin = Descriptors.fqnClassToBinary(mainClass);
+			boolean mainClassPresent = false;
 
 			Parameters cpp = new Parameters(attrs.get("classpath"));
 
@@ -121,6 +127,12 @@ public class WorkspaceExternalPluginHandler implements AutoCloseable {
 				if (result.isErr())
 					return result.asError();
 
+				try (Jar jar = new Jar(result.unwrap())) {
+					Resource resource = jar.getResource(mainClassBin);
+					if (resource != null) {
+						mainClassPresent = true;
+					}
+				}
 				cp.add(result.unwrap());
 			}
 
@@ -130,16 +142,19 @@ public class WorkspaceExternalPluginHandler implements AutoCloseable {
 				.sorted(this::sort)
 				.collect(Collectors.toList());
 
-			if (caps.isEmpty())
-				return Result.err("no bundle found with main class %s", mainClass);
+			if (caps.isEmpty()) {
+				if (!mainClassPresent)
+					return Result.err("no bundle found with main class %s", mainClass);
+			} else {
 
-			Capability cap = caps.get(0);
+				Capability cap = caps.get(0);
 
-			Result<File> bundle = workspace.getBundle(cap.getResource());
-			if (bundle.isErr())
-				return bundle.asError();
+				Result<File> bundle = workspace.getBundle(cap.getResource());
+				if (bundle.isErr())
+					return bundle.asError();
 
-			cp.add(bundle.unwrap());
+				cp.add(bundle.unwrap());
+			}
 
 			Command c = new Command();
 
@@ -309,7 +324,8 @@ public class WorkspaceExternalPluginHandler implements AutoCloseable {
 			Class<?> loadedClass = loader.unwrap()
 				.loadClass(implementation);
 
-			Object plugin = loadedClass.newInstance();
+			Object plugin = loadedClass.getConstructor()
+				.newInstance();
 			return Result.ok(plugin);
 		} catch (Exception e) {
 			Workspace.logger.info("failed to load class %s for external plugin load for %s", implementation, cap, e);
@@ -350,6 +366,10 @@ public class WorkspaceExternalPluginHandler implements AutoCloseable {
 	 * interface class.
 	 */
 	static class ProxyClassLoader extends ClassLoader {
+		static {
+			ClassLoader.registerAsParallelCapable();
+		}
+
 		private final Class<?>[]	classes;
 		private final ClassLoader[]	loaders;
 

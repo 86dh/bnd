@@ -3,7 +3,6 @@ package aQute.bnd.gradle;
 import static aQute.bnd.gradle.BndUtils.builtBy;
 import static aQute.bnd.gradle.BndUtils.unwrap;
 import static aQute.bnd.gradle.BndUtils.unwrapFile;
-import static java.util.stream.Collectors.toList;
 import static org.gradle.api.tasks.PathSensitivity.NONE;
 
 import java.io.File;
@@ -330,29 +329,23 @@ public class Baseline extends DefaultTask {
 		Deque<Object> queue = new ArrayDeque<>(bundleCollection.getBuiltBy());
 		while (!queue.isEmpty()) {
 			Object o = queue.removeFirst();
-			if (o instanceof org.gradle.api.tasks.bundling.Jar) {
-				org.gradle.api.tasks.bundling.Jar t = (org.gradle.api.tasks.bundling.Jar) o;
+			if (o instanceof org.gradle.api.tasks.bundling.Jar t) {
 				if (Objects.nonNull(t.getExtensions()
 					.findByName(BundleTaskExtension.NAME))) {
 					return t;
 				}
-			} else if (o instanceof Provider) {
-				Provider<?> p = (Provider<?>) o;
-				queue.addFirst(p.get());
-			} else if (o instanceof Map) {
-				Map<?, ?> m = (Map<?, ?>) o;
-				queue.addFirst(m.values());
-			} else if (o instanceof Collection) {
-				Collection<?> c = (Collection<?>) o;
-				queue.addFirst(c.toArray());
-			} else if ((o instanceof Iterable) && !(o instanceof Path)) {
-				Iterable<?> i = (Iterable<?>) o;
-				queue.addFirst(StreamSupport.stream(i.spliterator(), false)
+			} else if (o instanceof Provider<?> provider) {
+				queue.addFirst(provider.get());
+			} else if (o instanceof Map<?,?> map) {
+				queue.addFirst(map.values());
+			} else if (o instanceof Collection<?> collection) {
+				queue.addFirst(collection.toArray());
+			} else if ((o instanceof Iterable<?> iterable) && !(o instanceof Path)) {
+				queue.addFirst(StreamSupport.stream(iterable.spliterator(), false)
 					.toArray());
-			} else if (o instanceof Object[]) {
-				Object[] a = (Object[]) o;
-				for (int i = a.length - 1; i >= 0; i--) {
-					queue.addFirst(a[i]);
+			} else if (o instanceof Object[] array) {
+				for (int i = array.length - 1; i >= 0; i--) {
+					queue.addFirst(array[i]);
 				}
 			}
 		}
@@ -383,7 +376,7 @@ public class Baseline extends DefaultTask {
 				.baseline(newer, older, new Instructions(new Parameters(Strings.join(diffpackagesList), processor)))
 				.stream()
 				.sorted(Comparator.comparing(info -> info.packageName))
-				.collect(toList());
+				.toList();
 			BundleInfo bundleInfo = baseliner.getBundleInfo();
 			try (Formatter f = new Formatter(report, "UTF-8", Locale.US)) {
 				String format = "%s %-50s %-10s %-10s %-10s %-10s %-10s %s\n";

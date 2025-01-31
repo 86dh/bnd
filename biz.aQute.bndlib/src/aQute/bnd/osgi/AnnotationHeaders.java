@@ -8,6 +8,7 @@ import java.io.IOException;
 import java.lang.annotation.Target;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collection;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
@@ -117,8 +118,6 @@ class AnnotationHeaders extends ClassDataCollector implements Closeable {
 		"org.osgi.annotation.versioning.ProviderType", "org.osgi.annotation.versioning.ConsumerType",
 		"org.osgi.annotation.versioning.Version");
 
-	final Analyzer						analyzer;
-	final MultiMap<String, String>		headers						= new MultiMap<>();
 
 	//
 	// Constant Strings for a fast switch statement
@@ -143,21 +142,22 @@ class AnnotationHeaders extends ClassDataCollector implements Closeable {
 	static final String					STD_HEADER					= "org.osgi.annotation.bundle.Header";
 	static final String					STD_HEADERS					= "org.osgi.annotation.bundle.Headers";
 
+	public static Set<String>			BND_ANNOTATIONS				= Set.of(BUNDLE_LICENSE, REQUIRE_CAPABILITY,
+		PROVIDE_CAPABILITY, BUNDLE_CATEGORY, BUNDLE_DOC_URL, BUNDLE_DEVELOPERS, BUNDLE_CONTRIBUTORS, BUNDLE_COPYRIGHT,
+		STD_REQUIREMENT, STD_CAPABILITY, STD_HEADER);
+
 	// Used to detect attributes and directives on Require-Capability and
 	// Provide-Capability
 	static final String					STD_ATTRIBUTE				= "org.osgi.annotation.bundle.Attribute";
 	static final String					STD_DIRECTIVE				= "org.osgi.annotation.bundle.Directive";
 
-	// Class we're currently processing
-	Clazz								current;
-
-	// The annotations we could not load. used to avoid repeatedly logging the
-	// same missing annotation for the same project. Note that this should not
-	// be reset for each #classStart(Clazz).
+	final Analyzer						analyzer;
+	final MultiMap<String, String>		headers						= new MultiMap<>();
 	final Set<String>					loggedMissing				= new HashSet<>();
 	final Instructions					instructions;
 
-	// we parse the annotations separately at the end
+	Clazz								current;
+
 	boolean								finalizing;
 
 	static String convert(Object value) {
@@ -185,23 +185,26 @@ class AnnotationHeaders extends ClassDataCollector implements Closeable {
 		//
 		// Parse any annotated classes except annotations
 		//
+		current = c;
 		if (!c.isAnnotation() && !c.annotations()
 			.isEmpty()) {
 
 			for (Instruction instruction : instructions.keySet()) {
 				if (instruction.matches(c.getFQN())) {
 					if (instruction.isNegated()) {
-						current = null;
 						return false;
 					}
 
-					current = c;
 					return true;
 				}
 			}
 		}
-		current = null;
 		return false;
+	}
+
+	@Override
+	public void classEnd() throws Exception {
+		current = null;
 	}
 
 	/*
@@ -280,10 +283,9 @@ class AnnotationHeaders extends ClassDataCollector implements Closeable {
 			default :
 				// Handle annotations in a repeatable container annotation
 				Object value = annotation.get("value");
-				if (value instanceof Object[]) {
-					Object[] container = (Object[]) value;
-					if ((container.length > 0) && (container[0] instanceof Annotation)) {
-						if (Optional.ofNullable(analyzer.findClass(((Annotation) container[0]).getName()))
+				if (value instanceof Object[] container) {
+					if ((container.length > 0) && (container[0] instanceof Annotation contained)) {
+						if (Optional.ofNullable(analyzer.findClass(contained.getName()))
 							.flatMap(c -> c.annotations("java/lang/annotation/Repeatable")
 								.findFirst())
 							.filter(a -> name.equals(a.get("value")))
@@ -390,6 +392,7 @@ class AnnotationHeaders extends ClassDataCollector implements Closeable {
 					break;
 				case STD_HEADER :
 				case STD_HEADERS :
+					mergeAttributesAndDirectives(a);
 					AnnotationHeaders.this.annotation(a);
 					break;
 				case STD_ATTRIBUTE :
@@ -495,10 +498,11 @@ class AnnotationHeaders extends ClassDataCollector implements Closeable {
 				}
 			}
 
-			if ((object instanceof Object[]) && (((Object[]) object).length > 0)
-				&& ((Object[]) object)[0] instanceof TypeRef) {
+			if (object instanceof Collection col) {
+				object = col.toArray();
+			}
 
-				Object[] typeRefs = (Object[]) object;
+			if ((object instanceof Object[] typeRefs) && (typeRefs.length > 0) && typeRefs[0] instanceof TypeRef) {
 				Object[] copy = new Object[typeRefs.length];
 				for (int i = 0; i < typeRefs.length; i++) {
 					// we need to replace the value with the
@@ -967,8 +971,7 @@ class AnnotationHeaders extends ClassDataCollector implements Closeable {
 		next.addProperties(MapStream.of(annotation.entrySet())
 			.filterKey(k -> k.startsWith("#"))
 			.map((k, v) -> {
-				if (k.equals("#uses") && (v instanceof Object[])) {
-					Object[] array = (Object[]) v;
+				if (k.equals("#uses") && (v instanceof Object[] array)) {
 					if ((array.length > 0) && (array[0] instanceof TypeRef)) {
 						String converted = Arrays.stream(array)
 							.map(TypeRef.class::cast)

@@ -81,7 +81,7 @@ public abstract class AbstractMavenRepository extends BaseRepository
 
 		ArtifactKey artifactKey = projectFacade.getArtifactKey();
 
-		String finalNameGuess = buildDirectoryGuess + "/" + artifactKey.getArtifactId() + "-" + artifactKey.getVersion()
+		String finalNameGuess = buildDirectoryGuess + "/" + artifactKey.artifactId() + "-" + artifactKey.version()
 			+ ".jar";
 
 		return new File(finalNameGuess);

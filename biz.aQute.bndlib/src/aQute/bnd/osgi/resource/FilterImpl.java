@@ -22,7 +22,6 @@ import java.lang.reflect.AccessibleObject;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
-import java.security.AccessController;
 import java.security.PrivilegedAction;
 import java.util.AbstractMap;
 import java.util.ArrayList;
@@ -406,11 +405,11 @@ abstract class FilterImpl implements Filter {
 			if (value1 == null) {
 				return false;
 			}
-			if (value1 instanceof String) {
-				return compare_String((String) value1);
+			if (value1 instanceof String stringValue) {
+				return compare_String(stringValue);
 			}
-			if (value1 instanceof Version) {
-				return compare_Version((Version) value1);
+			if (value1 instanceof Version versionValue) {
+				return compare_Version(versionValue);
 			}
 
 			Class<?> clazz = value1.getClass();
@@ -421,26 +420,26 @@ abstract class FilterImpl implements Filter {
 				}
 				return compare_ObjectArray((Object[]) value1);
 			}
-			if (value1 instanceof Collection<?>) {
-				return compare_Collection((Collection<?>) value1);
+			if (value1 instanceof Collection<?> collectionValue) {
+				return compare_Collection(collectionValue);
 			}
 			if (value1 instanceof Integer || value1 instanceof Long || value1 instanceof Byte
 				|| value1 instanceof Short) {
 				return compare_Long(((Number) value1).longValue());
 			}
-			if (value1 instanceof Character) {
-				return compare_Character(((Character) value1).charValue());
+			if (value1 instanceof Character characterValue) {
+				return compare_Character(characterValue.charValue());
 			}
-			if (value1 instanceof Float) {
-				return compare_Float(((Float) value1).floatValue());
+			if (value1 instanceof Float floatValue) {
+				return compare_Float(floatValue.floatValue());
 			}
-			if (value1 instanceof Double) {
-				return compare_Double(((Double) value1).doubleValue());
+			if (value1 instanceof Double doubleValue) {
+				return compare_Double(doubleValue.doubleValue());
 			}
-			if (value1 instanceof Boolean) {
+			if (value1 instanceof Boolean booleanValue) {
 				return compare_Boolean(((Boolean) value1).booleanValue());
 			}
-			if (value1 instanceof Comparable<?>) {
+			if (value1 instanceof Comparable) {
 				@SuppressWarnings("unchecked")
 				Comparable<Object> comparable = (Comparable<Object>) value1;
 				return compare_Comparable(comparable);
@@ -853,9 +852,12 @@ abstract class FilterImpl implements Filter {
 			return null;
 		}
 
+		@SuppressWarnings({
+			"deprecation", "removal"
+		})
 		private static void setAccessible(AccessibleObject accessible) {
 			if (!accessible.isAccessible()) {
-				AccessController.doPrivileged((PrivilegedAction<Void>) () -> {
+				java.security.AccessController.doPrivileged((PrivilegedAction<Void>) () -> {
 					accessible.setAccessible(true);
 					return null;
 				});
@@ -1326,8 +1328,7 @@ abstract class FilterImpl implements Filter {
 			List<String> keyList = new ArrayList<>(dictionary.size());
 			for (Enumeration<?> e = dictionary.keys(); e.hasMoreElements();) {
 				Object k = e.nextElement();
-				if (k instanceof String) {
-					String key = (String) k;
+				if (k instanceof String key) {
 					for (String i : keyList) {
 						if (key.equalsIgnoreCase(i)) {
 							throw new IllegalArgumentException();

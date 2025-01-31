@@ -59,6 +59,7 @@ import org.osgi.framework.Constants;
 import org.osgi.util.tracker.BundleTracker;
 import org.osgi.util.tracker.ServiceTracker;
 
+import aQute.junit.system.BndSystem;
 import aQute.tester.bundle.engine.BundleEngine;
 import aQute.tester.bundle.engine.discovery.BundleSelector;
 import aQute.tester.junit.platform.reporting.legacy.xml.LegacyXmlReportGeneratingListener;
@@ -127,12 +128,18 @@ public class Activator implements BundleActivator, Runnable {
 
 		// We can be started on our own thread or from the main code
 		thread = Thread.currentThread();
+		final ClassLoader contextClassLoader = thread.getContextClassLoader();
+		thread.setContextClassLoader(LauncherFactory.class.getClassLoader());
+		try {
 
-		launcher = LauncherFactory.create(LauncherConfig.builder()
-			.enableTestEngineAutoRegistration(false)
-			.addTestEngines(new BundleEngine())
-			.build());
+			launcher = LauncherFactory.create(LauncherConfig.builder()
+				.enableTestEngineAutoRegistration(false)
+				.addTestEngines(new BundleEngine())
+				.build());
 
+		} finally {
+			thread.setContextClassLoader(contextClassLoader);
+		}
 		List<TestExecutionListener> listenerList = new ArrayList<>();
 
 		setTesterNames(context.getProperty(TESTER_NAMES));
@@ -154,7 +161,7 @@ public class Activator implements BundleActivator, Runnable {
 			} catch (Exception e) {
 				System.err.println(
 					"Cannot create link Eclipse JUnit control on port " + port + " (rerunIDE: " + rerunIDE + ')');
-				System.exit(254);
+				BndSystem.exit(254);
 			}
 		}
 
@@ -331,22 +338,32 @@ public class Activator implements BundleActivator, Runnable {
 
 		trace("starting queue");
 		long result = 0;
+		long timeout = continuous ? Long.MAX_VALUE : 5000;
 		while (active()) {
 			try {
 				List<DiscoverySelector> selectors = new ArrayList<>();
-				for (DiscoverySelector selector = queue.takeFirst(); //
+
+				//
+				// it would be more logical to check for an empty queue here
+				// and !continuous but many tests cases assume that we
+				// will wait for at least 1 test case.
+				//
+
+				for (DiscoverySelector selector = queue.pollFirst(timeout, TimeUnit.MILLISECONDS); //
 					selector != null; //
 					selector = queue.pollFirst(100, TimeUnit.MILLISECONDS)) {
 					selectors.add(selector);
 					queue.drainTo(selectors);
 				}
-				LauncherDiscoveryRequest testRequest = buildRequest(selectors);
-				trace("test will run");
-				result += test(testRequest);
-				trace("test ran");
+				if (!selectors.isEmpty()) {
+					LauncherDiscoveryRequest testRequest = buildRequest(selectors);
+					trace("test will run");
+					result += test(testRequest);
+					trace("test ran");
+				}
 				if (queue.isEmpty() && !continuous) {
 					trace("queue %s", queue);
-					System.exit((int) result);
+					BndSystem.exit((int) result);
 				}
 			} catch (InterruptedException e) {
 				trace("tests bundle queue interrupted");
@@ -354,7 +371,7 @@ public class Activator implements BundleActivator, Runnable {
 				break;
 			} catch (Exception e) {
 				error("Not sure what happened anymore %s", e);
-				System.exit(254);
+				BndSystem.exit(254);
 			}
 		}
 	}

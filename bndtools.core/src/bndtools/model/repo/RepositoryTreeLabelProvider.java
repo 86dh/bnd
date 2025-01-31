@@ -9,11 +9,13 @@ import org.eclipse.jface.viewers.ViewerCell;
 import org.eclipse.swt.graphics.Image;
 
 import aQute.bnd.build.Project;
+import aQute.bnd.exceptions.Exceptions;
 import aQute.bnd.service.Actionable;
 import aQute.bnd.service.RepositoryPlugin;
-import aQute.bnd.exceptions.Exceptions;
+import aQute.bnd.service.tags.Tags;
 
-public class RepositoryTreeLabelProvider extends StyledCellLabelProvider {
+public class RepositoryTreeLabelProvider extends StyledCellLabelProvider
+	implements org.eclipse.jface.viewers.ILabelProvider {
 
 	final Image				arrowImg	= Icons.image("arrow_down");
 	final Image				bundleImg	= Icons.image("bundle");
@@ -45,6 +47,11 @@ public class RepositoryTreeLabelProvider extends StyledCellLabelProvider {
 					if (name == null)
 						name = repo.getName();
 					label.append(name);
+
+					Tags tags = repo.getTags();
+					if (!tags.isEmpty()) {
+						label.append(" " + Tags.print(tags), StyledString.QUALIFIER_STYLER);
+					}
 
 					IconBuilder ib = Icons.builder(repo.getIcon());
 					if (repo.canWrite()) {
@@ -164,5 +171,36 @@ public class RepositoryTreeLabelProvider extends StyledCellLabelProvider {
 			// ignore, use default
 		}
 		return null;
+	}
+
+	@Override
+	public Image getImage(Object element) {
+		return arrowImg;
+	}
+
+	/**
+	 *
+	 */
+	@Override
+	public String getText(Object element) {
+		if (element instanceof RepositoryPlugin rp)
+			return rp.getName();
+
+		if (element instanceof Project pr)
+			return pr.getName();
+
+		if (element instanceof ProjectBundle pb)
+			return pb.getBsn();
+
+		if (element instanceof RepositoryBundle rb)
+			return rb.getText();
+
+		if (element instanceof RepositoryBundleVersion rbv)
+			return rbv.getText();
+
+		if (element instanceof RepositoryResourceElement re)
+			return re.getIdentity();
+
+		return element.toString();
 	}
 }

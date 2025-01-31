@@ -88,7 +88,7 @@ public class POM implements IPom {
 	}
 
 	public POM(MavenRepository repo, InputStream in, boolean ignoreParentIfAbsent) throws Exception {
-		this(repo, IO.work, getDocBuilder().parse(processEntities(in)), ignoreParentIfAbsent);
+		this(repo, null, getDocBuilder().parse(processEntities(in)), ignoreParentIfAbsent);
 	}
 
 	private static DocumentBuilder getDocBuilder() throws ParserConfigurationException {
@@ -160,7 +160,7 @@ public class POM implements IPom {
 	}
 
 	public POM(MavenRepository repo, Document doc, boolean ignoreIfParentAbsent) throws Exception {
-		this(repo, IO.work, doc, ignoreIfParentAbsent);
+		this(repo, null, doc, ignoreIfParentAbsent);
 	}
 
 	private POM(MavenRepository repo, File base, Document doc, boolean ignoreIfParentAbsent) throws Exception {
@@ -183,7 +183,8 @@ public class POM implements IPom {
 				throw new IllegalArgumentException("Invalid version for parent pom " + program + ":" + v);
 
 			File fp;
-			if (relativePath != null && !relativePath.isEmpty() && (fp = IO.getFile(base, relativePath)).isFile()) {
+			if (Objects.nonNull(base) && Strings.nonNullOrEmpty(relativePath)
+				&& (fp = IO.getFile(base, relativePath)).isFile()) {
 				this.parent = new POM(repo, fp);
 			} else {
 				Revision revision = program.version(v);
@@ -316,12 +317,15 @@ public class POM implements IPom {
 		return "true".equalsIgnoreCase(other);
 	}
 
-	private String get(Element dependency, String name, String deflt) throws XPathExpressionException {
-		String value = xp.evaluate(name, dependency);
-		if (value == null || value.isEmpty())
-			return Strings.trim(deflt);
+	private String get(Element dependency, String name, String deflt) {
+		var matchingElements = dependency.getElementsByTagName(name);
+		if (matchingElements.getLength() > 0) {
+			var value = matchingElements.item(0).getTextContent();
+			if (value != null && !value.isEmpty())
+				return Strings.trim(replaceMacros(value));
+		}
 
-		return Strings.trim(replaceMacros(value));
+		return Strings.trim(deflt);
 	}
 
 	private String getOrSet(String key, String deflt) {

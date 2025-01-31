@@ -2,6 +2,7 @@ package biz.aQute.resolve;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -59,7 +60,7 @@ import test.lib.MockRegistry;
 })
 public class ResolveTest {
 
-	private static final LogService log = new LogReporter(new ReporterAdapter(System.out));
+	private static final LogService	log	= new LogReporter(new ReporterAdapter(System.out));
 
 	@InjectTemporaryDirectory
 	File							tmp;
@@ -114,13 +115,11 @@ public class ResolveTest {
 
 	@Test
 	public void testDefaultVersionsForJava() throws Exception {
-		Run run = Run.createRun(null, IO.getFile("testdata/defltversions/run.bndrun"));
-		try (Workspace w = run.getWorkspace(); ProjectResolver pr = new ProjectResolver(run);) {
-			Map<Resource, List<Wire>> resolve = pr.resolve();
-			assertTrue(pr.check());
-			assertNotNull(resolve);
-			assertTrue(resolve.size() > 0);
-			System.out.println(resolve);
+		try (Bndrun run = (Bndrun) Bndrun.createRun(null, IO.getFile("testdata/defltversions/run.bndrun"))) {
+			RunResolution resolve = run.resolve();
+			Map<Resource, List<Wire>> required = resolve.getRequired();
+			assertThat(required).hasSizeGreaterThanOrEqualTo(1);
+			System.out.println(required);
 		}
 	}
 
@@ -328,7 +327,8 @@ public class ResolveTest {
 		requires.add(capReq.buildSyntheticRequirement());
 
 		model.setRunRequires(requires);
-		BndrunResolveContext context = new BndrunResolveContext(model, registry, log);
+		BndrunResolveContext context = new BndrunResolveContext(model.getProperties(), model.getProject(), registry,
+			log);
 		context.setLevel(0);
 		context.init();
 		try (ResolverLogger logger = new ResolverLogger(4)) {
@@ -359,7 +359,8 @@ public class ResolveTest {
 		requires.add(capReq.buildSyntheticRequirement());
 
 		model.setRunRequires(requires);
-		BndrunResolveContext context = new BndrunResolveContext(model, registry, log);
+		BndrunResolveContext context = new BndrunResolveContext(model.getProperties(), model.getProject(), registry,
+			log);
 		context.setLevel(0);
 		context.init();
 		try (ResolverLogger logger = new ResolverLogger(4)) {
@@ -370,6 +371,54 @@ public class ResolveTest {
 			Resource shell = getResource(resources, "org.apache.felix.gogo.shell", "0.10.0");
 			assertNotNull(shell);
 		}
+	}
+
+	/**
+	 * Test if we can resolve with a distro
+	 *
+	 */
+
+	String test = """
+		osgi.wiring.package; osgi.wiring.package=a;version=1;where=sys;id=1,
+		osgi.wiring.package; osgi.wiring.package=a;version=1;where=r1;id=2,
+
+		osgi.wiring.package; osgi.wiring.package=a;version=2;where=sys;id=3,
+
+		osgi.wiring.package; osgi.wiring.package=a;version=2;where=r1;id=4,
+
+		osgi.wiring.package; osgi.wiring.package=a;version=2;where=wir;id=5,
+		osgi.wiring.package; osgi.wiring.package=zz;version=2;where=r2;id=6,
+
+		osgi.wiring.package; osgi.wiring.package=a;version=3;where=r3;id=7,
+		osgi.wiring.package; osgi.wiring.package=a;version=3;bundle-symbolic-name=A;where=r3;id=8,
+		osgi.wiring.package; osgi.wiring.package=a;version=3;bundle-symbolic-name=B;where=r3;id=9,
+		osgi.wiring.package; osgi.wiring.package=a;version=4;bundle-symbolic-name=B;where=r3;id=10,
+		osgi.wiring.package; osgi.wiring.package=a;version=4;bundle-symbolic-name=B;bundle-version=1;where=r3;id=11,
+		osgi.wiring.package; osgi.wiring.package=a;version=4;bundle-symbolic-name=B;bundle-version=2;where=r4;id=12,
+
+		osgi.service; objectClass:List<String>="A,N";version=1;where=r5;id=20,
+		osgi.service; objectClass:List<String>="A,N";version=2;where=r6;id=21,
+		osgi.service; objectClass:List<String>=A;version=1;where=r5;id=22,
+		""";
+
+	@Test
+	public void testCapabilitiesSorting() throws Exception {
+
+		ResolverTester rt = new ResolverTester(test);
+
+		assertThat(rt.sortedCapabilities("7", "8", "9", "4", "10", "11", "12")).containsExactly("12", // a
+																										// v4
+			"11", "10", "9",
+			"8", "7", "4");
+
+		assertThat(rt.sortedCapabilities("21", "22")).containsExactly("21", "22");
+		assertThat(rt.sortedCapabilities("1", "21", "20", "22")).containsExactly("1", "21", "20", "22");
+
+		assertThat(rt.sortedCapabilities("4", "6")).containsExactly("6", "4");
+		assertThat(rt.sortedCapabilities("1", "2", "3", "4", "5", "6")).containsExactly("3", "1", "5", "6", "4", "2");
+		assertThat(rt.sortedCapabilities("2", "5")).containsExactly("5", "2");
+		assertThat(rt.sortedCapabilities("1", "3")).containsExactly("3", "1");
+		assertThat(rt.sortedCapabilities("1", "2")).containsExactly("1", "2");
 	}
 
 	/**
@@ -458,7 +507,8 @@ public class ResolveTest {
 		requires.add(capReq.buildSyntheticRequirement());
 
 		model.setRunRequires(requires);
-		BndrunResolveContext context = new BndrunResolveContext(model, registry, log);
+		BndrunResolveContext context = new BndrunResolveContext(model.getProperties(), model.getProject(), registry,
+			log);
 
 		try (ResolverLogger logger = new ResolverLogger()) {
 			Resolver resolver = new BndResolver(logger);
@@ -588,7 +638,6 @@ public class ResolveTest {
 		runModel.setEE(EE.JavaSE_1_7);
 		runModel.setSystemPackages(Collections.singletonList(new ExportedPackage("org.w3c.dom.traversal", null)));
 		runModel.setGenericString("-resolve.effective", "active");
-
 		// Require the log service, GoGo shell and GoGo commands
 		List<Requirement> requirements = new ArrayList<>();
 
@@ -605,7 +654,8 @@ public class ResolveTest {
 		runModel.setRunRequires(requirements);
 
 		// Resolve the bndrun
-		BndrunResolveContext context = new BndrunResolveContext(runModel, registry, log);
+		BndrunResolveContext context = new BndrunResolveContext(runModel.getProperties(), runModel.getProject(),
+			registry, log);
 		Resolver resolver = new BndResolver(new org.apache.felix.resolver.Logger(4));
 		Collection<Resource> resolvedResources = new ResolveProcess()
 			.resolveRequired(runModel, registry, resolver, Collections.emptyList(), log)
@@ -677,9 +727,8 @@ public class ResolveTest {
 			System.out.println(runbundles);
 			assertThat(bndrun.check()).isTrue();
 			Parameters p = new Parameters(runbundles);
-			assertThat(p.keySet()).contains("org.apache.felix.scr", "test.log",
-				"org.apache.felix.log.extension",
-					"org.apache.felix.gogo.command", "org.apache.felix.gogo.runtime");
+			assertThat(p.keySet()).contains("org.apache.felix.scr", "test.log", "org.apache.felix.log.extension",
+				"org.apache.felix.gogo.command", "org.apache.felix.gogo.runtime");
 		}
 	}
 
@@ -714,6 +763,34 @@ public class ResolveTest {
 				n++;
 			}
 			System.out.println(dot.render());
+		}
+	}
+
+	/**
+	 * This test triggers a Uses constraint violation. And we want to check that
+	 * it gets logged via
+	 * {@link InternalResolverLogger#logUsesConstraintViolation(Resource, org.apache.felix.resolver.ResolutionError)}
+	 */
+	@Test
+	public void testResolveUsesConstraintErrorLogging() throws Exception {
+		File f = IO.getFile("testdata/repo-usesconstrainterror/run.bndrun");
+
+		try (Run run = Run.createRun(null, f)) {
+
+			RunResolution resolution = RunResolution.resolve(run, null);
+			assertFalse(resolution.isOK());
+			assertNotNull(resolution.exception);
+			System.out.println(resolution.exception);
+			assertTrue(resolution.exception.getMessage()
+				.contains(
+					"Uses constraint violation. Unable to resolve resource BundleC [BundleC version=1.0.0.SNAPSHOT] "
+						+ "because it is exposed to package 'com.example.util.internal' from resources "
+						+ "BundleA2 [BundleA2 version=1.0.0.SNAPSHOT] and "
+						+ "BundleA [BundleA version=1.0.0.SNAPSHOT] via two dependency chains."),
+				resolution.exception.getMessage());
+
+			// Log level set via -resolvedebug: 1 in run.bndrun
+			assertTrue(resolution.log.startsWith("Log level:1"));
 		}
 	}
 

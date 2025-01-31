@@ -15,6 +15,7 @@ import aQute.bnd.header.Parameters;
 import aQute.bnd.osgi.Builder;
 import aQute.bnd.osgi.Domain;
 import aQute.bnd.osgi.Jar;
+import aQute.lib.io.IO;
 
 public class ImportJavaTest {
 	private Builder builder;
@@ -92,15 +93,17 @@ public class ImportJavaTest {
 	@Test
 	public void import_java_old_framework() throws Exception {
 		builder.setProperty("Import-Package", "org.osgi.framework;version=\"[1.8,2)\",*");
-		builder.setProperty("-includepackage", "test.importjava");
+		builder.setProperty("-classpath", "compilerversions/compilerversions.jar");
+		builder.setProperty("-includepackage", "sun_1_8");
 		builder.setProperty("-noimportjava", "false");
+		builder.addClasspath(IO.getFile("jar/osgi.core-4.3.0.jar"));
 		Jar jar = builder.build();
 		assertTrue(builder.check());
 		Manifest manifest = jar.getManifest();
 		manifest.write(System.err);
 		Domain d = Domain.domain(manifest);
 		Parameters imports = d.getImportPackage();
-		assertThat(imports).containsOnlyKeys("org.osgi.framework");
+		assertThat(imports).containsOnlyKeys("org.osgi.framework", "javax.swing");
 	}
 
 	@Test
@@ -108,6 +111,36 @@ public class ImportJavaTest {
 		builder.setProperty("-classpath", "compilerversions/compilerversions.jar");
 		builder.setProperty("-includepackage", "test.importjava,jdk_11_0");
 		builder.setProperty("-noimportjava", "false");
+
+		Jar jar = builder.build();
+		assertTrue(builder.check());
+		Manifest manifest = jar.getManifest();
+		manifest.write(System.err);
+		Domain d = Domain.domain(manifest);
+		Parameters imports = d.getImportPackage();
+		assertThat(imports).containsOnlyKeys("java.io", "java.lang", "java.lang.invoke", "java.lang.reflect",
+			"java.util", "java.util.function", "java.util.stream", "javax.swing");
+	}
+
+	@Test
+	public void import_java_all_java11_defaulting() throws Exception {
+		builder.setProperty("-classpath", "compilerversions/compilerversions.jar");
+		builder.setProperty("-includepackage", "test.importjava,jdk_11_0");
+
+		Jar jar = builder.build();
+		assertTrue(builder.check());
+		Manifest manifest = jar.getManifest();
+		manifest.write(System.err);
+		Domain d = Domain.domain(manifest);
+		Parameters imports = d.getImportPackage();
+		assertThat(imports).containsOnlyKeys("java.io", "java.lang", "java.lang.invoke", "java.lang.reflect",
+			"java.util", "java.util.function", "java.util.stream", "javax.swing");
+	}
+
+	@Test
+	public void import_java_all_java9_defaulting() throws Exception {
+		builder.setProperty("-classpath", "compilerversions/compilerversions.jar");
+		builder.setProperty("-includepackage", "test.importjava,jdk_9_0");
 
 		Jar jar = builder.build();
 		assertTrue(builder.check());

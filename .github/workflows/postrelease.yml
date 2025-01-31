@@ -1,0 +1,135 @@
+name: 'post release'
+
+#
+# This action is intended to be run after a release 
+# is available on Maven Central
+#
+
+
+on:
+  workflow_dispatch:
+    inputs:
+      V1:
+        description: 'The just released version'
+        required: true
+        type: string
+      dryrun:
+        description: 'Run the code but do not do non-idempotent actions like publishing to gradle or so'
+        default: true
+        required: true
+        type: boolean
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+
+  #
+  #   Generate the released version docs as constant html
+  #   and upload them to be merged into master
+  #
+
+  release-doc-generate:
+    runs-on: ubuntu-latest
+    env:
+      BUNDLE_GEMFILE: Gemfile
+      BUNDLE_PATH: vendor/bundle
+    steps:
+    - name: Git Checkout
+      uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+      with:
+        ref: next
+    - name: Set up Ruby
+      uses: ruby/setup-ruby@2654679fe7f7c29875c669398a8ec0791b8a64a1
+      with:
+        ruby-version: 2.7
+        bundler-cache: true
+        working-directory: docs
+    - name: create release docs for ${{ github.event.inputs.V1 }}
+      run: |
+        cd docs
+        echo "releasename: ${V1}" >tmp
+        echo "baseurl: /release/${V1}" >>tmp
+        echo "repository: bndtools/bnd" >>tmp
+        cat _config.yml | sed '/^releasename: /d' | sed '/^baseurl: /d' | sed '/^repository: /d' >>tmp
+        mv tmp _config.yml
+
+        ./build.sh
+        bundle exec jekyll build
+
+        rm -rf _site/releases
+        find _site -type f ! -name "*.html" -exec rm -f {} +
+
+    - uses: actions/upload-artifact@v4
+      with:
+        name: releasedocs
+        path: docs/_site/
+
+
+  #
+  # Create a workspace template with the new version
+  # in the https://github.com/bndtools/workspace repository
+  #
+
+  create-workspace-template:
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+      WORKSPACE_REPO: https://${{ secrets.PAT_WORKSPACE_REPO }}@github.com/bndtools/workspace.git
+      V1: ${{ github.event.inputs.V1 }}
+
+    steps:
+    - name: create branch for templates
+      run: |
+        export v=`echo $V1 | awk -F. '{print $1"."$2}'`
+        echo $v
+        git clone $WORKSPACE_REPO repo
+        cd repo
+        git config user.name github-actions
+        git config user.email github-actions@bndtools.org
+        git checkout -B $v
+        echo "For release $V1" > README.md
+        git add .
+        git commit -m "Release $V1"
+        git push --force $WORKSPACE_REPO $v 
+
+
+
+  #
+  # Collect any updates to the master branch
+  #
+
+  finalize-master:
+    needs: [release-doc-generate, create-workspace-template]
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+    - name: checkout master
+      uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+      with:
+        ref: master
+
+    - name: download docs/releases/${{ github.event.inputs.V1 }}
+      uses: actions/download-artifact@v4
+      with:
+        name: releasedocs
+        path: docs/releases/${{ github.event.inputs.V1 }}/
+
+    - name: update baseline for the current build
+      run: |
+        sed 's/baseline.version:.*/baseline.version: ${{ github.event.inputs.V1 }}/' cnf/build.bnd >tmp
+        cat tmp
+        mv tmp cnf/build.bnd
+
+    - name: create PR
+      run: |
+        git config user.name github-actions
+        git config user.email github-actions@bndtools.org
+        git checkout -B post-release
+        git add .
+        git commit -s -m "Post release ${{ github.event.inputs.V1 }}"
+        git push origin post-release --force
+        gh pr create -f -B master || echo "existing pr"
+        

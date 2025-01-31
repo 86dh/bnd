@@ -81,6 +81,7 @@ import aQute.tester.testclasses.bundle.engine.TestWithField;
 
 @SuppressWarnings("restriction")
 public class BundleEngineTest {
+	@SuppressWarnings("resource")
 	private LaunchpadBuilder	builder				= new LaunchpadBuilder().bndrun("bundleenginetest.bndrun")
 		.excludeExport("aQute.tester.bundle.engine")
 		.excludeExport("aQute.tester.bundle.engine.discovery")
@@ -201,7 +202,7 @@ public class BundleEngineTest {
 				event(test("noEngines"),
 					finishedWithFailure(instanceOf(JUnitException.class),
 						message(x -> x.contains("Couldn't find any registered TestEngines")))))
-			.haveExactly(1, event(bundle(testBundle), skippedWithReason("Couldn't find any registered TestEngines")));
+			.doNotHave(event(bundle(testBundle)));
 	}
 
 	public class NonEngine {}

@@ -1,0 +1,3 @@
+-runfw: org.eclipse.osgi
+-resolve.effective: resolve, active
+-runrequires: osgi.implementation;filter:='(osgi.implementation=osgi.event)'

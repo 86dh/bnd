@@ -21,13 +21,12 @@ repositories {
 
 dependencies {
 	implementation "biz.aQute.bnd:biz.aQute.junit:${bnd_version}"
-	runtimeOnly 'org.eclipse.platform:org.eclipse.osgi:3.13.0'
+	runtimeOnly 'org.eclipse.platform:org.eclipse.osgi:3.18.100'
 }
 
 def jar = tasks.named('jar') {
-	ext.taskprop = 'prop.task'
 	manifest {
-		attributes('Implementation-Title': project.archivesBaseName,
+		attributes('Implementation-Title': base.archivesName,
 		'Implementation-Version': project.version,
 		'-includeresource': '{${.}/bar.txt}',
 		'-include': '${.}/other.bnd',

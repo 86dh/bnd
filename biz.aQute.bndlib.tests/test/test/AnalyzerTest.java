@@ -11,6 +11,7 @@ import java.io.File;
 import java.io.IOException;
 import java.util.Arrays;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -30,10 +31,13 @@ import aQute.bnd.osgi.Builder;
 import aQute.bnd.osgi.Clazz;
 import aQute.bnd.osgi.Constants;
 import aQute.bnd.osgi.Domain;
+import aQute.bnd.osgi.EmbeddedResource;
 import aQute.bnd.osgi.FileResource;
 import aQute.bnd.osgi.Jar;
 import aQute.bnd.osgi.Packages;
 import aQute.bnd.osgi.Processor;
+import aQute.bnd.osgi.Resource;
+import aQute.bnd.osgi.metainf.MetaInfService;
 import aQute.lib.io.IO;
 
 class T0 {}
@@ -54,7 +58,7 @@ public class AnalyzerTest {
 
 	@Test
 	public void testManifestOverridesPackageInfo() throws Exception {
-		try(Builder source = new Builder() ){
+		try (Builder source = new Builder()) {
 			source.setProperty("-exportcontents", "foo;version=1000");
 			source.setProperty("-includeresource", "foo/packageinfo;literal='version 1\n'");
 			Jar jar = source.build();
@@ -317,6 +321,32 @@ public class AnalyzerTest {
 	}
 
 	/**
+	 * Check if bnd handles blueprint
+	 */
+
+	@Test
+	public void testBlueprintReferences() throws Exception {
+		try (Builder b = new Builder()) {
+			b.addClasspath(IO.getFile("jar/osgi.jar"));
+			b.addClasspath(new File("bin_test"));
+			b.setIncludeResource(
+				"""
+					OSGI-INF/blueprint/blueprint.xml;literal='<blueprint xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+						xmlns="http://www.osgi.org/xmlns/blueprint/v1.0.0"
+						xsi:schemaLocation="http://www.osgi.org/xmlns/blueprint/v1.0.0 http://www.osgi.org/xmlns/blueprint/v1.0.0/blueprint.xsd">
+						<bean id="fw" class="org.osgi.framework.Framework"/>
+						<bean id="ea" class="org.osgi.service.event.EventAdmin" factory-method="newBuilder"/>
+					</blueprint>'""");
+			b.setConditionalPackage("org.osgi.*");
+			b.setProperty("-plugin", "aQute.lib.spring.SpringXMLType");
+			Jar jar = b.build();
+			assertTrue(b.check());
+			assertThat(jar.getResources()).containsKey("org/osgi/service/event/packageinfo");
+			assertThat(jar.getResources()).containsKey("org/osgi/framework/packageinfo");
+		}
+	}
+
+	/**
 	 * Test basic functionality of he BCP
 	 */
 
@@ -325,7 +355,7 @@ public class AnalyzerTest {
 		Builder b = new Builder();
 		try {
 			b.setProperty(Constants.BUNDLE_CLASSPATH, "foo");
-			b.setProperty(Constants.INCLUDE_RESOURCE, "foo/test/refer=bin_test/test/refer");
+			b.setProperty(Constants.INCLUDERESOURCE, "foo/test/refer=bin_test/test/refer");
 			b.setProperty(Constants.EXPORT_CONTENTS, "test.refer");
 			Jar jar = b.build();
 			Manifest m = jar.getManifest();
@@ -458,10 +488,8 @@ public class AnalyzerTest {
 			b.setProperty("-exportcontents", "test.refer");
 			b.build();
 			assertTrue(b.check("Bundle-ClassPath uses a directory 'jars/some.jar'"));
-			assertTrue(
-				b.getImports()
-					.getByFQN("org.osgi.service.event") != null,
-				b.getImports()
+			assertTrue(b.getImports()
+				.getByFQN("org.osgi.service.event") != null, b.getImports()
 					.toString());
 		} finally {
 			b.close();
@@ -796,13 +824,13 @@ public class AnalyzerTest {
 	 * @throws Exception
 	 */
 	@Test
-	public void testPrivataBundleActivatorNotImported() throws Exception {
-		Builder a = new Builder();
-		try {
+	public void testPrivateBundleActivatorNotImported() throws Exception {
+		try (Builder a = new Builder()) {
 			Properties p = new Properties();
 			p.put("Import-Package", "!org.osgi.service.component, *");
 			p.put("Private-Package", "test.activator");
 			p.put("Bundle-Activator", "test.activator.Activator");
+			p.put("-noimportjava", "true");
 			a.addClasspath(new File("bin_test"));
 			a.setProperties(p);
 			a.build();
@@ -815,8 +843,6 @@ public class AnalyzerTest {
 				.getValue("Import-Package");
 			System.err.println(imports);
 			assertEquals("org.osgi.framework", imports);
-		} finally {
-			a.close();
 		}
 	}
 
@@ -831,6 +857,7 @@ public class AnalyzerTest {
 		Builder a = new Builder();
 		try {
 			Properties p = new Properties();
+			p.put("-noimportjava", "true");
 			p.put("Import-Package", "!org.osgi.framework,*");
 			p.put("Private-Package", "org.objectweb.*");
 			p.put("Bundle-Activator", "org.osgi.framework.BundleActivator");
@@ -1051,14 +1078,12 @@ public class AnalyzerTest {
 			Manifest manifest = a.getJar()
 				.getManifest();
 
-			assertEquals(0,
-				a.getErrors()
-					.size(),
+			assertEquals(0, a.getErrors()
+				.size(),
 				a.getErrors()
 					.toString());
-			assertEquals(1,
-				a.getWarnings()
-					.size(),
+			assertEquals(1, a.getWarnings()
+				.size(),
 				a.getWarnings()
 					.toString());
 			assertTrue(a.check("A Bundle-Activator header was present but no activator class was defined"));
@@ -1085,14 +1110,12 @@ public class AnalyzerTest {
 			Manifest manifest = a.getJar()
 				.getManifest();
 
-			assertEquals(2,
-				a.getErrors()
-					.size(),
+			assertEquals(2, a.getErrors()
+				.size(),
 				a.getErrors()
 					.toString());
-			assertEquals(0,
-				a.getWarnings()
-					.size(),
+			assertEquals(0, a.getWarnings()
+				.size(),
 				a.getWarnings()
 					.toString());
 			assertTrue(a.check("A Bundle-Activator header is present and its value is not a valid type name 123",
@@ -1120,14 +1143,12 @@ public class AnalyzerTest {
 			Manifest manifest = a.getJar()
 				.getManifest();
 
-			assertEquals(1,
-				a.getErrors()
-					.size(),
+			assertEquals(1, a.getErrors()
+				.size(),
 				a.getErrors()
 					.toString());
-			assertEquals(0,
-				a.getWarnings()
-					.size(),
+			assertEquals(0, a.getWarnings()
+				.size(),
 				a.getWarnings()
 					.toString());
 			assertTrue(a.check(
@@ -1155,14 +1176,12 @@ public class AnalyzerTest {
 			Manifest manifest = a.getJar()
 				.getManifest();
 
-			assertEquals(1,
-				a.getErrors()
-					.size(),
+			assertEquals(1, a.getErrors()
+				.size(),
 				a.getErrors()
 					.toString());
-			assertEquals(0,
-				a.getWarnings()
-					.size(),
+			assertEquals(0, a.getWarnings()
+				.size(),
 				a.getWarnings()
 					.toString());
 			assertTrue(
@@ -1423,6 +1442,35 @@ public class AnalyzerTest {
 				.getByFQN("com.foo") != null);
 			assertTrue(h.getExports()
 				.getByFQN("com.bar") != null);
+		}
+	}
+
+	@Test
+	public void testEmptyMetaInfServicesFolder() throws Exception {
+
+		Resource r = new EmbeddedResource("foo", 0L);
+		try (Jar jar = new Jar("test")) {
+			jar.putResource("META-INF/services/subfolder/", r);
+
+			Map<String, Resource> map = jar.getDirectories()
+				.getOrDefault("META-INF/services", Collections.emptyMap());
+
+			assertTrue(jar.getDirectories()
+				.containsKey("META-INF/services/subfolder"));
+			assertNotNull(jar.getDirectories()
+				.get("META-INF/services/subfolder"));
+			assertEquals(1, jar.getDirectories()
+				.get("META-INF/services/subfolder")
+				.size());
+
+			assertTrue(jar.getDirectories()
+				.containsKey("META-INF/services"));
+			assertNull(jar.getDirectories()
+				.get("META-INF/services"));
+
+			Map<String, MetaInfService> serviceFiles = MetaInfService.getServiceFiles(jar);
+			assertNotNull(serviceFiles);
+			assertTrue(serviceFiles.isEmpty());
 		}
 	}
 

@@ -54,8 +54,12 @@ public class Settings implements Map<String, String> {
 	}
 
 	public Settings(String where) {
+		this(IO.getFile(IO.work, where));
+	}
+
+	public Settings(File where) {
 		assert where != null;
-		this.where = IO.getFile(IO.work, where);
+		this.where = where;
 	}
 
 	public boolean load() {
@@ -154,7 +158,7 @@ public class Settings implements Map<String, String> {
 		check();
 		KeyPairGenerator keyGen = KeyPairGenerator.getInstance("RSA");
 		SecureRandom random = SecureRandom.getInstance("SHA1PRNG");
-		keyGen.initialize(1024, random);
+		keyGen.initialize(2048, random);
 		KeyPair pair = keyGen.generateKeyPair();
 		privateKey = pair.getPrivate();
 		publicKey = pair.getPublic();
