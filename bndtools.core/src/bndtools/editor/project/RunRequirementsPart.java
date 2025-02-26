@@ -159,12 +159,16 @@ public class RunRequirementsPart extends AbstractRequirementListPart {
 	private void doResolve() {
 		IFormPage formPage = (IFormPage) getManagedForm().getContainer();
 		BndEditor editor = (BndEditor) formPage.getEditor();
+		refreshFromModel();
+		commit(false);
 		editor.resolveRunBundles(new NullProgressMonitor(), false);
 	}
 
 	@Override
 	protected void doCommitToModel(List<Requirement> requires) {
-		model.setRunRequires(requires);
+		if (isDirty()) {
+			model.setRunRequires(requires);
+		}
 	}
 
 	@Override

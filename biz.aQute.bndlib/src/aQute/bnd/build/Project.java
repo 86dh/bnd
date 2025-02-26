@@ -162,6 +162,7 @@ public class Project extends Processor {
 	final Collection<Container>									runbundles						= new LinkedHashSet<>();
 	final Collection<Container>									runfw							= new LinkedHashSet<>();
 	File														runstorage;
+	private final RepoCollector									repoCollector;
 	final Map<File, Attrs>										sourcepath						= new LinkedHashMap<>();
 	final Collection<File>										allsourcepath					= new LinkedHashSet<>();
 	final Collection<Container>									bootclasspath					= new LinkedHashSet<>();
@@ -195,6 +196,8 @@ public class Project extends Processor {
 
 		// For backward compatibility reasons, we also read
 		readBuildProperties();
+		repoCollector = new RepoCollector(this);
+		addClose(repoCollector);
 	}
 
 	public Project(Workspace workspace, File buildDir) {
@@ -232,7 +235,7 @@ public class Project extends Processor {
 		if (getBase() == null || !getBase().isDirectory())
 			return false;
 
-		return getPropertiesFile() == null || getPropertiesFile().isFile();
+		return getPropertiesFile() == null || (!mustFileExist() || getPropertiesFile().isFile());
 	}
 
 	/**
@@ -321,7 +324,7 @@ public class Project extends Processor {
 
 				// We use a builder to construct all the properties for
 				// use.
-				setProperty("basedir", basePath);
+				setProperty("basedir", basePath, "[project]");
 
 				// If a bnd.bnd file exists, we read it.
 				// Otherwise, we just do the build properties.
@@ -498,19 +501,19 @@ public class Project extends Processor {
 	}
 
 	public File getSrcOutput() {
-		return getFile(getProperty(Constants.DEFAULT_PROP_BIN_DIR));
+		return getSingleFile(Constants.DEFAULT_PROP_BIN_DIR);
 	}
 
 	public File getTestSrc() {
-		return getFile(getProperty(Constants.DEFAULT_PROP_TESTSRC_DIR));
+		return getSingleFile(Constants.DEFAULT_PROP_TESTSRC_DIR);
 	}
 
 	public File getTestOutput() {
-		return getFile(getProperty(Constants.DEFAULT_PROP_TESTBIN_DIR));
+		return getSingleFile(Constants.DEFAULT_PROP_TESTBIN_DIR);
 	}
 
 	public File getTargetDir() {
-		return getFile(getProperty(Constants.DEFAULT_PROP_TARGET_DIR));
+		return getSingleFile(Constants.DEFAULT_PROP_TARGET_DIR);
 	}
 
 	private void traverse(Set<Project> dependencies, Project dependent, Set<Project> visited) throws Exception {
@@ -522,6 +525,17 @@ public class Project extends Processor {
 		}
 
 		dependents.add(dependent);
+	}
+
+	private File getSingleFile(String key) {
+		String value = getProperty(key);
+		if (value == null) {
+			error("project.%s expected value for property %s but got null", key, key);
+			value = key;
+		} else if (value.indexOf(',') >= 0) {
+			error("project.%s expected one file path for property %s but got multiple: %s", key, key, value);
+		}
+		return getFile(value);
 	}
 
 	/**
@@ -1232,7 +1246,7 @@ public class Project extends Processor {
 	 * @param bsn The bundle symbolic name
 	 * @param range The version range
 	 * @param strategy set to LOWEST or HIGHEST
-	 * @return the file object that points to the bundle or null if not found
+	 * @return the Container that points to the bundle what might be {code}Container.TYPE.ERROR{code} in case it can not be found.
 	 * @throws Exception when something goes wrong
 	 */
 
@@ -1338,20 +1352,12 @@ public class Project extends Processor {
 			// the first or last
 
 			if (!versions.isEmpty()) {
-				Version provider = null;
-
-				switch (useStrategy) {
-					case HIGHEST :
-						provider = versions.lastKey();
-						break;
-
-					case LOWEST :
-						provider = versions.firstKey();
-						break;
-					case EXACT :
-						// TODO need to handle exact better
-						break;
-				}
+				Version provider = switch (useStrategy) {
+					case HIGHEST -> versions.lastKey();
+					case LOWEST -> versions.firstKey();
+					// TODO need to handle exact better
+					case EXACT -> null;
+				};
 				if (provider != null) {
 					RepositoryPlugin repo = versions.get(provider);
 					if (repo == null) {
@@ -1503,9 +1509,7 @@ public class Project extends Processor {
 
 			// If not, and if the repository implements the OSGi Repository
 			// Service, use a capability search on the osgi.content namespace.
-			if (result == null && plugin instanceof Repository) {
-				Repository repo = (Repository) plugin;
-
+			if (result == null && plugin instanceof Repository repo) {
 				if (!SHA_256.equals(algo))
 					// R5 repos only support SHA-256
 					continue;
@@ -1629,59 +1633,12 @@ public class Project extends Processor {
 			return null;
 		}
 
-		String spec = args[1];
-		String version = null;
-		Strategy strategy = Strategy.HIGHEST;
-
-		if (args.length > 2) {
-			version = args[2];
-			if (args.length == 4) {
-				if (args[3].equalsIgnoreCase("HIGHEST"))
-					strategy = Strategy.HIGHEST;
-				else if (args[3].equalsIgnoreCase("LOWEST"))
-					strategy = Strategy.LOWEST;
-				else if (args[3].equalsIgnoreCase("EXACT"))
-					strategy = Strategy.EXACT;
-				else
-					msgs.InvalidStrategy(_repoHelp, args);
-			}
+		Collection<Container> containers = repoCollector.repoContainers(args);
+		if (containers == null) {
+			return null;
 		}
 
-		Parameters bsns = new Parameters(spec, this);
-		List<String> paths = new ArrayList<>();
-
-		for (Entry<String, Attrs> entry : bsns.entrySet()) {
-			String bsn = removeDuplicateMarker(entry.getKey());
-			Map<String, String> attrs = entry.getValue();
-			Container container = getBundle(bsn, version, strategy, attrs);
-			if (container.getError() != null) {
-				error("${repo} macro refers to an artifact %s-%s (%s) that has an error: %s", bsn, version, strategy,
-					container.getError());
-			} else
-				add(paths, container);
-		}
-		return join(paths);
-	}
-
-	private void add(List<String> paths, Container container) throws Exception {
-		if (container.getType() == Container.TYPE.LIBRARY) {
-			List<Container> members = container.getMembers();
-			for (Container sub : members) {
-				add(paths, sub);
-			}
-		} else {
-			if (container.getError() == null)
-				paths.add(IO.absolutePath(container.getFile()));
-			else {
-				paths.add("<<${repo} = " + container.getBundleSymbolicName() + "-" + container.getVersion() + " : "
-					+ container.getError() + ">>");
-
-				if (isPedantic()) {
-					warning("Could not expand repo path request: %s ", container);
-				}
-			}
-
-		}
+		return repoCollector.repoPaths(containers);
 	}
 
 	public File getTarget() throws Exception {
@@ -1737,6 +1694,7 @@ public class Project extends Processor {
 
 	private void install(RepositoryPlugin repo, Processor context, File f, Attrs value) throws Exception {
 		try (Processor p = new Processor(context)) {
+			p.setBase(context.getBase());
 			p.getProperties()
 				.putAll(value);
 			PutOptions options = new PutOptions();
@@ -1746,6 +1704,7 @@ public class Project extends Processor {
 			} catch (Exception e) {
 				exception(e, "Cannot install %s into %s because %s", f, repo.getName(), e);
 			}
+			context.getInfo(p, f.getName() + ":");
 		}
 	}
 
@@ -1993,7 +1952,6 @@ public class Project extends Processor {
 						}
 					}
 				}
-
 
 				boolean bfsWrite = !bfs.exists() || (lastModified > bfs.lastModified());
 				if (buildfiles != null) {
@@ -3129,7 +3087,7 @@ public class Project extends Processor {
 	protected void report(Map<String, Object> table, boolean isProject) throws Exception {
 		if (isProject) {
 			table.put("Target", getTarget());
-			table.put("Source", getSrc());
+			table.put("Source", getSourcePath());
 			table.put("Output", getOutput());
 			File[] buildFiles = getBuildFiles();
 			if (buildFiles != null)
@@ -3186,7 +3144,8 @@ public class Project extends Processor {
 		javac.add("-sourcepath", sourcepath.toString());
 
 		Glob javaFiles = new Glob("*.java");
-		List<File> files = javaFiles.getFiles(getSrc(), true, false);
+		List<File> files = new ArrayList<>();
+		getSourcePath().forEach(src -> javaFiles.getFiles(src, files, true, false));
 
 		for (File file : files) {
 			javac.add(IO.absolutePath(file));
@@ -3653,4 +3612,84 @@ public class Project extends Processor {
 		}
 		return result;
 	}
+
+	/**
+	 * Find a processor that is inheriting from a project. This is either the
+	 * bnd.bnd file or a sub bnd.
+	 *
+	 * @param file the file that contains the properties
+	 * @return a processor properly setup for the Workspace inheritance or empty
+	 */
+	public Optional<Processor> findProcessor(File file) {
+
+		if (file.equals(getPropertiesFile()))
+			return Optional.of(this);
+
+		File projectDir = file.getParentFile();
+		if (!projectDir.equals(getBase()))
+			return Optional.empty();
+
+		try {
+			if (file.getName()
+				.endsWith(".bndrun"))
+				return Optional.of(Run.createRun(getWorkspace(), file));
+
+			for (SubProject sub : getSubProjects()) {
+				if (file.equals(sub.getPropertiesFile())) {
+					return Optional.of(sub);
+				}
+			}
+			return Optional.empty();
+		} catch (Exception e) {
+			throw Exceptions.duck(e);
+		}
+	}
+
+	/**
+	 * Return a list of sub projects.
+	 */
+
+	@SuppressWarnings("resource")
+	public List<SubProject> getSubProjects() {
+
+		String sub = getProperty(SUB);
+		if (sub == null || sub.trim()
+			.length() == 0 || EMPTY_HEADER.equals(sub)) {
+			return Collections.emptyList();
+		}
+
+		if (isTrue(getProperty(NOBUNDLES)))
+			return Collections.emptyList();
+
+		Set<File> parentFiles = new HashSet<>();
+		Processor rover = this;
+		while (rover != null) {
+			parentFiles.add(rover.getPropertiesFile());
+			rover = rover.getParent();
+		}
+
+		List<SubProject> subProjects = new ArrayList<>();
+		Instructions instructions = new Instructions(sub);
+		List<File> members = IO.listFiles(getBase());
+		nextFile: while (!members.isEmpty()) {
+
+			File file = members.remove(0);
+			if (!file.isFile() || file.getName()
+				.startsWith(".") || parentFiles.contains(file))
+				continue nextFile;
+
+			for (Instruction instruction : instructions.keySet()) {
+				if (instruction.matches(file.getName())) {
+
+					if (!instruction.isNegated()) {
+						subProjects.add(new SubProject(this, file));
+					}
+					continue nextFile;
+				}
+			}
+		}
+		return subProjects;
+
+	}
+
 }

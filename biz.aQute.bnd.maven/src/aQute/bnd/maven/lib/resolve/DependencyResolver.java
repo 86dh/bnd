@@ -5,10 +5,13 @@ import static java.util.stream.Collectors.toSet;
 import java.io.File;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
+import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Queue;
 import java.util.Set;
 import java.util.function.BiPredicate;
 import java.util.stream.Collectors;
@@ -31,10 +34,10 @@ import org.eclipse.aether.repository.RemoteRepository;
 import org.eclipse.aether.resolution.ArtifactRequest;
 import org.eclipse.aether.resolution.ArtifactResolutionException;
 import org.eclipse.aether.resolution.ArtifactResult;
+import org.osgi.annotation.versioning.ProviderType;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import aQute.bnd.annotation.ProviderType;
 import aQute.bnd.exceptions.Exceptions;
 import aQute.bnd.maven.lib.artifact.ProjectArtifactCollector;
 import aQute.bnd.repository.fileset.FileSetRepository;
@@ -63,7 +66,11 @@ public class DependencyResolver {
 			&& Objects.equals(a.getArtifact()
 				.getVersion(),
 				b.getArtifact()
-					.getVersion());
+					.getVersion())
+			&& Objects.equals(a.getArtifact()
+				.getExtension(),
+			b.getArtifact()
+				.getExtension());
 	private static final BiPredicate<ArtifactResult, Collection<ArtifactResult>>	containsExactVersion		= (
 		resolvedArtifact, collection) -> collection.stream()
 			.anyMatch(ra -> sameExactVersion.test(ra, resolvedArtifact));
@@ -293,38 +300,60 @@ public class DependencyResolver {
 	private void discoverArtifacts(Map<File, ArtifactResult> files, List<DependencyNode> nodes, String parent,
 		List<RemoteRepository> remoteRepositories) throws MojoExecutionException {
 
-		for (DependencyNode node : nodes) {
-			List<RemoteRepository> combinedRepositories = new ArrayList<>(remoteRepositories);
-			combinedRepositories.addAll(node.getRepositories());
+		List<RemoteRepository> combinedRepositories = new ArrayList<>(remoteRepositories);
+		Queue<DependencyNode> processQueue = new LinkedList<>(nodes);
+		Set<String> visited = new HashSet<>();
+		DependencyNode node = processQueue.poll();
+		long nodesChecked = 0;
+		long nodesSkipped = 0;
+		long nodesFailed = 0;
+		while (node != null) {
+			String nodeString = node.toString();
+			if (!visited.contains(nodeString)) {
+				nodesChecked++;
+				combinedRepositories.addAll(node.getRepositories());
 
-			// Ensure that the file is downloaded so we can index it
-			try {
-				ArtifactResult resolvedArtifact = postProcessor.postProcessResult(system.resolveArtifact(session,
-					new ArtifactRequest(node.getArtifact(), combinedRepositories, parent)));
-				logger.debug("Located file: {} for artifact {}", resolvedArtifact.getArtifact()
-					.getFile(), resolvedArtifact);
-
-				// Add artifact only if the scope of this artifact matches and
-				// if
-				// we don't already have another version (earlier means higher
-				// precedence regardless of version)
-				if (scopes.contains(node.getDependency()
-					.getScope()) && containsExactVersion.negate()
-						.test(resolvedArtifact, files.values())
-				) {
-					files.put(resolvedArtifact.getArtifact()
+				// Ensure that the file is downloaded so we can index it
+				try {
+					ArtifactResult resolvedArtifact = postProcessor.postProcessResult(system.resolveArtifact(session,
+						new ArtifactRequest(node.getArtifact(), combinedRepositories, node.getRequestContext())));
+					logger.debug("Located file: {} for artifact {}", resolvedArtifact.getArtifact()
 						.getFile(), resolvedArtifact);
-				}
-			} catch (ArtifactResolutionException e) {
-				logger.warn("Failed to resolve dependency {}", node.getArtifact());
-			}
 
-			if (includeTransitive) {
-				discoverArtifacts(files, node.getChildren(), node.getRequestContext(), combinedRepositories);
+					// Add artifact only if the scope of this artifact matches
+					// and
+					// if
+					// we don't already have another version (earlier means
+					// higher
+					// precedence regardless of version)
+					if (scopes.contains(node.getDependency()
+						.getScope()) && containsExactVersion.negate()
+							.test(resolvedArtifact, files.values())) {
+						files.put(resolvedArtifact.getArtifact()
+							.getFile(), resolvedArtifact);
+					}
+				} catch (ArtifactResolutionException e) {
+					nodesFailed++;
+					logger.warn("Failed to resolve dependency {}", node.getArtifact());
+				}
+
+				if (includeTransitive) {
+					processQueue.addAll(node.getChildren());
+					// discoverArtifacts(files, , node.getRequestContext(),
+					// combinedRepositories);
+				} else {
+					logger.debug("Ignoring transitive dependencies of {}", node.getDependency());
+				}
+				visited.add(nodeString);
 			} else {
-				logger.debug("Ignoring transitive dependencies of {}", node.getDependency());
+				nodesSkipped++;
 			}
+			node = processQueue.poll();
 		}
+
+		logger.info(
+			"Resolved all Dependencies for {}. Checked: {}, Skipped(no need to revisit): {}, Failed: {}, Resulting Dependencies: {}",
+			parent, nodesChecked, nodesSkipped, nodesFailed, files.size());
 	}
 
 	@SuppressWarnings("deprecation")

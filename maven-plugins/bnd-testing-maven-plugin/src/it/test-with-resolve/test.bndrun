@@ -1,0 +1,5 @@
+-standalone: target/index.xml
+
+-runfw: 		org.apache.felix.framework
+
+-runrequires: osgi.identity;filter:='(osgi.identity=test-with-resolve)'

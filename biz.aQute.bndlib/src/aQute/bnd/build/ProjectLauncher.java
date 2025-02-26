@@ -330,6 +330,25 @@ public abstract class ProjectLauncher extends Processor {
 	}
 
 	public int launch() throws Exception {
+		Command command = getCommand();
+
+		logger.debug("cmd line {}", command);
+		try {
+			int result = command.execute(in, out, err);
+			if (result == Integer.MIN_VALUE)
+				return TIMEDOUT;
+			reportResult(result);
+			return result;
+		} finally {
+			cleanup();
+			listeners.clear();
+		}
+	}
+
+	public Command getCommand() throws Exception {
+		if (java != null) {
+			return java;
+		}
 		prepare();
 		java = new Command();
 
@@ -375,18 +394,7 @@ public abstract class ProjectLauncher extends Processor {
 		File cwd = getCwd();
 		if (cwd != null)
 			java.setCwd(cwd);
-
-		logger.debug("cmd line {}", java);
-		try {
-			int result = java.execute(in, out, err);
-			if (result == Integer.MIN_VALUE)
-				return TIMEDOUT;
-			reportResult(result);
-			return result;
-		} finally {
-			cleanup();
-			listeners.clear();
-		}
+		return java;
 	}
 
 	/**
@@ -486,7 +494,7 @@ public abstract class ProjectLauncher extends Processor {
 	}
 
 	public void cancel() throws Exception {
-		java.cancel();
+		getCommand().cancel();
 	}
 
 	public Map<String, ? extends Map<String, String>> getSystemPackages() {
@@ -716,8 +724,8 @@ public abstract class ProjectLauncher extends Processor {
 				continue;
 
 			Attrs runtimeAttrs;
-			if (attrs instanceof Attrs) {
-				runtimeAttrs = new Attrs((Attrs) attrs);
+			if (attrs instanceof Attrs a) {
+				runtimeAttrs = new Attrs(a);
 			} else {
 				runtimeAttrs = new Attrs(attrs);
 			}
@@ -767,8 +775,21 @@ public abstract class ProjectLauncher extends Processor {
 				int defaultLevel = maxLevel + 1;
 				int beginningLevel = maxLevel + 2;
 
-				if (!properties.containsKey(LAUNCH_STARTLEVEL_DEFAULT))
-					properties.put(LAUNCH_STARTLEVEL_DEFAULT, Integer.toString(defaultLevel));
+				if (!properties.containsKey(LAUNCH_STARTLEVEL_DEFAULT)) {
+					switch (project.instructions.launcher()
+						.manage()) {
+						default :
+						case all :
+							properties.put(LAUNCH_STARTLEVEL_DEFAULT, Integer.toString(defaultLevel));
+							break;
+						case narrow :
+							properties.put(LAUNCH_STARTLEVEL_DEFAULT, Integer.toString(-defaultLevel));
+							break;
+						case none :
+							properties.put(LAUNCH_STARTLEVEL_DEFAULT, "0");
+							break;
+					}
+				}
 
 				if (beginningLevelString == null) {
 					properties.put(FRAMEWORK_BEGINNING_STARTLEVEL, Integer.toString(beginningLevel));

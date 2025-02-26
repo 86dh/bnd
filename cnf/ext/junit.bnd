@@ -6,16 +6,16 @@ opentest4j.tester.version=1.1.0
 # Runtime versions
 junit3.version=3.8.3
 junit4.version=4.13.2
-junit4.eclipse.version=4.13.0
-junit.jupiter.eclipse.version=5.6.0
-junit.platform.eclipse.version=1.6.0
-junit.jupiter.version=5.9.1
-junit.platform.version=1.9.1
-assertj.version=3.23.1
+junit4.eclipse.version=4.13.2
+junit.jupiter.eclipse.version=5.9.0
+junit.platform.eclipse.version=1.9.0
+junit.jupiter.version=5.9.2
+junit.platform.version=1.9.2
+assertj.version=3.24.2
 awaitility.version=4.2.0
 hamcrest.version=2.2
-mockito.version=4.7.0
-bytebuddy.version=1.12.13
+mockito.version=4.11.0
+bytebuddy.version=1.12.21
 objenesis.version=3.2
 osgi-test.version=1.2.1
 
@@ -27,6 +27,7 @@ junit: ${junit-osgi},\
 junit-osgi: \
 	junit-platform-commons;version=latest,\
 	junit-platform-engine;version=latest,\
+	junit-platform-launcher;version=latest,\
 	assertj-core;version=latest,\
 	net.bytebuddy.byte-buddy;version=latest,\
 	org.opentest4j;version=latest,\

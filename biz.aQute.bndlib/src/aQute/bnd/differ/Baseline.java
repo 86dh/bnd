@@ -22,6 +22,7 @@ import aQute.bnd.header.OSGiHeader;
 import aQute.bnd.header.Parameters;
 import aQute.bnd.osgi.Constants;
 import aQute.bnd.osgi.Descriptors;
+import aQute.bnd.osgi.Instruction;
 import aQute.bnd.osgi.Instructions;
 import aQute.bnd.osgi.Jar;
 import aQute.bnd.osgi.Processor;
@@ -33,7 +34,7 @@ import aQute.bnd.service.diff.Type;
 import aQute.bnd.unmodifiable.Sets;
 import aQute.bnd.version.Version;
 import aQute.libg.generics.Create;
-import aQute.service.reporter.Reporter;
+import aQute.service.reporter.Reporter;;
 
 /**
  * This class maintains
@@ -63,9 +64,6 @@ public class Baseline {
 		public Version	suggestedVersion;
 		public boolean	mismatch;
 		public String	reason;
-
-		@Deprecated
-		public Version	version;
 	}
 
 	final Differ		differ;
@@ -136,8 +134,11 @@ public class Baseline {
 				.startsWith("java."))
 				continue;
 
-			if (!packageFilters.matches(pdiff.getName()))
+			var matcher = packageFilters.matcher(pdiff.getName());
+			if (!packageFilters.isEmpty() && (matcher == null || matcher.isNegated()))
 				continue;
+
+			var threshold = getThreshold(packageFilters, matcher);
 
 			final Info info = new Info();
 			infos.add(info);
@@ -173,6 +174,11 @@ public class Baseline {
 						default :
 							break;
 					}
+
+					if (threshold != null && diff.getDelta().compareTo(threshold) < 0) {
+						return true;
+					}
+
 					switch (diff.getType()) {
 						case PACKAGE :
 						case INTERFACE :
@@ -239,32 +245,20 @@ public class Baseline {
 					}
 				}
 			}
-			Delta content;
-			switch (delta) {
-				case IGNORED :
-				case UNCHANGED :
-					content = UNCHANGED;
-					break;
+			Delta content = switch (delta) {
+				case IGNORED, UNCHANGED -> UNCHANGED;
+				case ADDED -> MINOR;
+				case CHANGED -> MICRO; // cannot happen
+				case MICRO, MINOR, MAJOR -> delta;
+				case REMOVED -> MAJOR;
+				default -> MAJOR;
+			};
 
-				case ADDED :
-					content = MINOR;
-					break;
 
-				case CHANGED : // cannot happen
-					content = MICRO;
-					break;
-
-				case MICRO :
-				case MINOR :
-				case MAJOR :
-					content = delta;
-					break;
-
-				case REMOVED :
-				default :
-					content = MAJOR;
-					break;
+			if (threshold != null && content.compareTo(threshold) < 0) {
+				content = UNCHANGED;
 			}
+
 			if (content.compareTo(highestDelta) > 0) {
 				highestDelta = content;
 			}
@@ -283,7 +277,7 @@ public class Baseline {
 
 		binfo.bsn = bsn;
 		binfo.suggestedVersion = suggestedVersion;
-		binfo.version = binfo.olderVersion = olderVersion;
+		binfo.olderVersion = olderVersion;
 		binfo.newerVersion = newerVersion;
 
 		if (newerVersion.getWithoutQualifier()
@@ -304,6 +298,22 @@ public class Baseline {
 		}
 
 		return infos;
+	}
+
+	private Delta getThreshold(Instructions packageFilters, Instruction matcher) {
+		if (matcher == null)
+			return null;
+		var attrs = packageFilters.get(matcher);
+		assert attrs != null : "guaranteed by the matcher != null";
+		var threshold = attrs.getOrDefault(Constants.DIFFPACKAGES_THRESHOLD, "MICRO")
+			.toUpperCase();
+		try {
+			return Delta.valueOf(threshold);
+		}
+		catch (IllegalArgumentException e) {
+			bnd.error("baseline.threshold baseline threshold specified as [%s] but does not correspond to a Delta enum - ignoring", threshold);
+		}
+		return null;
 	}
 
 	/**
@@ -387,18 +397,13 @@ public class Baseline {
 	}
 
 	private Version bump(Delta delta, Version last, int offset, int base) {
-		switch (delta) {
-			case UNCHANGED :
-				return last;
-			case MINOR :
-				return new Version(last.getMajor(), last.getMinor() + offset, base);
-			case MAJOR :
-				return new Version(last.getMajor() + 1, base, base);
-			case ADDED :
-				return last;
-			default :
-				return new Version(last.getMajor(), last.getMinor(), last.getMicro() + offset);
-		}
+		return switch (delta) {
+			case UNCHANGED, IGNORED -> last;
+			case MINOR -> new Version(last.getMajor(), last.getMinor() + offset, base);
+			case MAJOR -> new Version(last.getMajor() + 1, base, base);
+			case ADDED -> last;
+			default -> new Version(last.getMajor(), last.getMinor(), last.getMicro() + offset);
+		};
 	}
 
 	private Version getVersion(Map<String, String> map) {
@@ -447,16 +452,12 @@ public class Baseline {
 	}
 
 	private Version bumpBundle(Delta delta, Version last, int offset, int base) {
-		switch (delta) {
-			case MINOR :
-				return new Version(last.getMajor(), last.getMinor() + offset, base);
-			case MAJOR :
-				return new Version(last.getMajor() + offset, base, base);
-			case ADDED :
-				return new Version(last.getMajor(), last.getMinor() + offset, base);
-			default :
-				return new Version(last.getMajor(), last.getMinor(), last.getMicro() + offset);
-		}
+		return switch (delta) {
+			case MINOR -> new Version(last.getMajor(), last.getMinor() + offset, base);
+			case MAJOR -> new Version(last.getMajor() + offset, base, base);
+			case ADDED -> new Version(last.getMajor(), last.getMinor() + offset, base);
+			default -> new Version(last.getMajor(), last.getMinor(), last.getMicro() + offset);
+		};
 	}
 
 	public BundleInfo getBundleInfo() {

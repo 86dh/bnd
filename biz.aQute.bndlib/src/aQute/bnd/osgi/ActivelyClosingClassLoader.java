@@ -1,6 +1,6 @@
 package aQute.bnd.osgi;
 
-import static java.util.Collections.enumeration;
+import static aQute.lib.collections.Enumerations.enumeration;
 import static java.util.stream.Collectors.toList;
 
 import java.io.Closeable;
@@ -15,9 +15,11 @@ import java.net.URLConnection;
 import java.net.URLStreamHandler;
 import java.util.Enumeration;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -25,7 +27,9 @@ import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Stream;
 
 import org.osgi.framework.Bundle;
+import org.osgi.framework.BundleContext;
 import org.osgi.framework.FrameworkUtil;
+import org.osgi.framework.wiring.BundleWiring;
 
 import aQute.bnd.exceptions.Exceptions;
 import aQute.lib.io.ByteBufferInputStream;
@@ -35,9 +39,13 @@ import aQute.lib.io.IO;
  * This class loader can load classes from JAR files.
  */
 class ActivelyClosingClassLoader extends URLClassLoader implements Closeable {
+	static {
+		ClassLoader.registerAsParallelCapable();
+	}
 	final AtomicReference<Map<File, Wrapper>>	wrappers	= new AtomicReference<>(new LinkedHashMap<>());
 	final AtomicBoolean							open		= new AtomicBoolean(true);
 	final Processor								processor;
+	final Bundle								bndlib;
 	ScheduledFuture<?>							schedule;
 
 	class Wrapper {
@@ -69,7 +77,7 @@ class ActivelyClosingClassLoader extends URLClassLoader implements Closeable {
 				if (resource == null) {
 					return null;
 				}
-				lastAccess = System.currentTimeMillis();
+				lastAccess = System.nanoTime();
 				return IO.read(resource.openInputStream());
 			} catch (Exception e) {
 				processor.exception(e, "while loading resource %s from %s: %s", name, file, e.getMessage());
@@ -78,10 +86,21 @@ class ActivelyClosingClassLoader extends URLClassLoader implements Closeable {
 		}
 	}
 
+	/*
+	 * For testing
+	 */
+	ActivelyClosingClassLoader() {
+		this(new Processor(), ActivelyClosingClassLoader.class.getClassLoader());
+	}
+
 	ActivelyClosingClassLoader(Processor processor, ClassLoader parent) {
+		this(processor, parent, FrameworkUtil.getBundle(About.class));
+	}
+
+	ActivelyClosingClassLoader(Processor processor, ClassLoader parent, Bundle lib) {
 		super(new URL[0], parent);
 		this.processor = processor;
-		registerAsParallelCapable();
+		this.bndlib = lib;
 	}
 
 	void add(File file) {
@@ -157,23 +176,21 @@ class ActivelyClosingClassLoader extends URLClassLoader implements Closeable {
 
 	@Override
 	public Enumeration<URL> findResources(String name) {
-		List<URL> resources = dataStream(name).map(data -> createURL(name, data))
-			.collect(toList());
-		return enumeration(resources);
+		return enumeration(dataStream(name).spliterator(), data -> createURL(name, data));
 	}
 
 	/**
-	 * This method will close any open files that have not been accessed since
-	 * purgeTime
+	 * This method will close any open files that have not been accessed within
+	 * the specified delta cutoff time.
 	 *
-	 * @param purgeTime the absolute cutoff time
+	 * @param purgeTime The delta cutoff time in nanoseconds.
 	 */
-
 	void purge(long purgeTime) {
+		long now = System.nanoTime();
 		wrappers.get()
 			.values()
 			.stream()
-			.filter(w -> w.lastAccess < purgeTime)
+			.filter(w -> now - w.lastAccess >= purgeTime)
 			.forEach(Wrapper::close);
 	}
 
@@ -199,26 +216,23 @@ class ActivelyClosingClassLoader extends URLClassLoader implements Closeable {
 
 	@Override
 	public Class<?> loadClass(String name) throws ClassNotFoundException {
+		Set<Bundle> clients = null;
+
 		try {
 			try {
 				return super.loadClass(name);
-			} catch (ClassNotFoundException nfe) {
+			} catch (ClassNotFoundException notFoundInJars) {
 
-				//
-				// Best effort search in the application classpath
-				// if we're running on OSGi
-				//
-
-				Bundle bundle = FrameworkUtil.getBundle(ActivelyClosingClassLoader.class);
-				if (bundle == null) {
-					throw nfe;
-				}
 				try {
-					return bundle.loadClass(name);
-				} catch (ClassNotFoundException anotherNfe) {
-					Bundle system = bundle.getBundleContext()
-						.getBundle(0);
-					return system.loadClass(name);
+					return About.class.getClassLoader()
+						.loadClass(name);
+				} catch (ClassNotFoundException notFoundInBnd) {
+
+					clients = new LinkedHashSet<>();
+					Class<?> clazz = loadclassFromClientBundles(name, clients);
+					if (clazz != null)
+						return clazz;
+					throw notFoundInJars;
 				}
 			}
 		} catch (Throwable t) {
@@ -229,17 +243,54 @@ class ActivelyClosingClassLoader extends URLClassLoader implements Closeable {
 			sb.append(getParent());
 			sb.append(" urls:");
 			sb.append(getFiles());
+			if (clients != null) {
+				sb.append("looked in ")
+					.append(clients);
+			}
 			sb.append(" exception:");
 			sb.append(Exceptions.toString(t));
 			throw new ClassNotFoundException(sb.toString(), t);
 		}
 	}
 
+	private Class<?> loadclassFromClientBundles(String name, Set<Bundle> clients) {
+
+		BundleWiring w;
+		BundleContext c;
+
+		if (bndlib == null || (w = bndlib.adapt(BundleWiring.class)) == null || (c = bndlib.getBundleContext()) == null)
+			return null;
+
+		w.getProvidedWires(null)
+			.stream()
+			.map(wire -> wire.getRequirer()
+				.getBundle())
+			.forEach(clients::add);
+
+		clients.add(c.getBundle(0));
+
+		for (Bundle b : clients) {
+			try {
+				return b.loadClass(name);
+			} catch (ClassNotFoundException notFoundInSomeBundle) {
+				// ok
+			} catch (Exception ignore) {
+				processor.warning("Unexpected exception when loading %s from %s: %s", name, b, ignore, ignore);
+			}
+		}
+
+		return null;
+	}
+
+	/**
+	 * This method will schedule closing any open files that have not been
+	 * accessed within the specified time interval.
+	 *
+	 * @param freshPeriod The time interval in nanoseconds.
+	 */
 	void autopurge(long freshPeriod) {
 		schedule = Processor.getScheduledExecutor()
-			.scheduleWithFixedDelay(() -> {
-				purge(System.currentTimeMillis() - freshPeriod);
-			}, freshPeriod, freshPeriod, TimeUnit.MILLISECONDS);
+			.scheduleWithFixedDelay(() -> purge(freshPeriod), freshPeriod, freshPeriod, TimeUnit.NANOSECONDS);
 	}
 
 }

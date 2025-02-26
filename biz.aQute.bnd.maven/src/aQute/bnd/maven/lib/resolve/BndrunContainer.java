@@ -19,10 +19,10 @@ import org.apache.maven.project.ProjectDependenciesResolver;
 import org.codehaus.plexus.util.xml.Xpp3Dom;
 import org.eclipse.aether.RepositorySystem;
 import org.eclipse.aether.RepositorySystemSession;
+import org.osgi.annotation.versioning.ProviderType;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import aQute.bnd.annotation.ProviderType;
 import aQute.bnd.build.Run;
 import aQute.bnd.build.Workspace;
 import aQute.bnd.build.model.EE;
@@ -203,7 +203,9 @@ public class BndrunContainer {
 		run.setParent(getProcessor(workspace));
 		run.clear();
 		run.forceRefresh(); // setBase must be called after forceRefresh
-		run.setBase(temporaryDir);
+		// this should imho not be there, it should
+		// be the parent directory of the properties file, as it was.
+		// run.setBase(temporaryDir);
 		run.getInfo(workspace);
 		setRunrequiresFromProjectArtifact(run);
 		setEEfromBuild(run);

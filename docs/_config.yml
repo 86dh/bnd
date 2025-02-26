@@ -32,6 +32,11 @@ defaults:
       path: ""
     values:
       layout: default
+  # exclude all the files from `/releases/` in the sitemap
+  - scope:
+      path:            releases/**
+    values:
+      sitemap:         false
 
 exclude:
   - 'ADDING_RELEASE_DOCS.md'
@@ -43,6 +48,7 @@ exclude:
   - '.gitignore'
   - '.project'
   - 'build.sh'
+  - 'run.sh'
   - '/examples'
   - '/releases/*/CNAME'
   - '/releases/*/favicon.ico'
@@ -50,3 +56,4 @@ exclude:
   - '/releases/*/sitemap.xml'
   - '/vendor'
   - '/.settings'
+  - 'pagefind'

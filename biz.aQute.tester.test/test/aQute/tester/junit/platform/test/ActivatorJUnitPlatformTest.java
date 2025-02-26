@@ -357,6 +357,7 @@ public class ActivatorJUnitPlatformTest extends AbstractActivatorCommonTest {
 			// @formatter:on
 		}
 
+		@SuppressWarnings("removal")
 		@BeforeEach
 		public void setUp(TestInfo info) throws Exception {
 			this.info = info;
@@ -371,13 +372,13 @@ public class ActivatorJUnitPlatformTest extends AbstractActivatorCommonTest {
 					.set(TESTER_TRACE, "true");
 			}
 			lp = null;
-			oldManager = System.getSecurityManager();
-			System.setSecurityManager(new ExitCheck());
+			oldManager = setExitToThrowExitCode();
 		}
 
+		@SuppressWarnings("removal")
 		@AfterEach
 		public void tearDown() {
-			System.setSecurityManager(oldManager);
+			IO.close(oldManager);
 			IO.close(lp);
 			IO.close(builder);
 		}
@@ -443,7 +444,8 @@ public class ActivatorJUnitPlatformTest extends AbstractActivatorCommonTest {
 			check(() -> Assertions.fail("Expecting method:\n%s\nto have failed", methodTest));
 		} else {
 			assertThat(failure.trace).as("trace")
-				.startsWith("org.junit.platform.commons.JUnitException: Could not find factory method [unknownMethod]");
+				.startsWith(
+					"org.junit.platform.commons.PreconditionViolationException: Could not find factory method [unknownMethod]");
 		}
 	}
 

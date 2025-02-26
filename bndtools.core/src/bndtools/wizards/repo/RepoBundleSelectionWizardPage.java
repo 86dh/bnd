@@ -263,7 +263,7 @@ public class RepoBundleSelectionWizardPage extends WizardPage {
 
 	protected void refreshBundleList() throws Exception {
 		Workspace workspace = Central.getWorkspace();
-		workspace.refresh();
+		// workspace.refresh();
 		availableViewer.setInput(RepositoryUtils.listRepositories(workspace, true));
 	}
 
@@ -288,7 +288,7 @@ public class RepoBundleSelectionWizardPage extends WizardPage {
 		for (Iterator<?> iter = selection.iterator(); iter.hasNext();) {
 			Object item = iter.next();
 			if (item instanceof RepositoryBundle) {
-				adding.add(RepositoryBundleUtils.convertRepoBundle((RepositoryBundle) item));
+				adding.add(RepositoryBundleUtils.convertRepoBundle((RepositoryBundle) item, phase));
 			} else if (item instanceof RepositoryBundleVersion) {
 				adding.add(RepositoryBundleUtils.convertRepoBundleVersion((RepositoryBundleVersion) item, phase));
 			} else if (item instanceof ProjectBundle) {

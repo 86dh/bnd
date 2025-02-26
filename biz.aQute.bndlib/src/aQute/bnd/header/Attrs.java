@@ -5,6 +5,7 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -43,18 +44,13 @@ public class Attrs implements Map<String, String> {
 		}
 
 		public Type plural() {
-			switch (this) {
-				case DOUBLE :
-					return DOUBLES;
-				case LONG :
-					return LONGS;
-				case STRING :
-					return STRINGS;
-				case VERSION :
-					return VERSIONS;
-				default :
-					return null;
-			}
+			return switch (this) {
+				case DOUBLE -> DOUBLES;
+				case LONG -> LONGS;
+				case STRING -> STRINGS;
+				case VERSION -> VERSIONS;
+				default -> null;
+			};
 		}
 	}
 
@@ -129,8 +125,9 @@ public class Attrs implements Map<String, String> {
 		if (!(value instanceof String)) {
 			Type type;
 
-			if (value instanceof Collection)
-				value = ((Collection<?>) value).toArray();
+			if (value instanceof Collection<?> collection) {
+				value = collection.toArray();
+			}
 
 			if (value.getClass()
 				.isArray()) {
@@ -180,7 +177,7 @@ public class Attrs implements Map<String, String> {
 			return Type.DOUBLE;
 		if (member instanceof Number)
 			return Type.LONG;
-		if (member instanceof Version)
+		if (member instanceof Version || member instanceof org.osgi.framework.Version)
 			return Type.VERSION;
 
 		return Type.STRING;
@@ -358,8 +355,8 @@ public class Attrs implements Map<String, String> {
 
 	@Override
 	public void putAll(Map<? extends String, ? extends String> other) {
-		if (other instanceof Attrs) {
-			putAll((Attrs) other);
+		if (other instanceof Attrs attrs) {
+			putAll(attrs);
 			return;
 		}
 		other.forEach(this::put);
@@ -466,6 +463,17 @@ public class Attrs implements Map<String, String> {
 		return true;
 	}
 
+	/**
+	 * Return this attrs as typed valuesx
+	 */
+
+	public Map<String, Object> toTyped() {
+		Map<String, Object> result = new HashMap<>();
+		for (String k : keySet()) {
+			result.put(k, getTyped(k));
+		}
+		return result;
+	}
 	public Object getTyped(String adname) {
 		String s = get(adname);
 		if (s == null)
@@ -513,24 +521,16 @@ public class Attrs implements Map<String, String> {
 
 	public static Object convert(Type t, String s) {
 		if (t.sub == null) {
-			switch (t) {
-				case STRING :
-					return s;
-				case LONG :
-					return Long.parseLong(s.trim());
-				case VERSION :
-					return Version.parseVersion(s);
-				case DOUBLE :
-					return Double.parseDouble(s.trim());
-
-				case DOUBLES :
-				case LONGS :
-				case STRINGS :
-				case VERSIONS :
-					// Cannot happen since the sub is null
-					return null;
-			}
-			return null;
+			return switch (t) {
+				case STRING -> s;
+				case LONG -> Long.parseLong(s.trim());
+				case VERSION -> Version.parseVersion(s);
+				case DOUBLE -> Double.parseDouble(s.trim());
+				/*
+				 * Cannot happen since the sub is null
+				 */
+				case DOUBLES, LONGS, STRINGS, VERSIONS -> null;
+			};
 		}
 		List<Object> list = new ArrayList<>();
 
@@ -633,5 +633,21 @@ public class Attrs implements Map<String, String> {
 			}
 		});
 		return attrs;
+	}
+
+	/**
+	 * Add aliases for all directives. In some cases, like annotations,
+	 * directives cannot have their ':' at the end. In that case we create an
+	 * alias without the ':'. We only create an alias for a directive when there
+	 * is no attribute with that value.
+	 */
+	public void addDirectiveAliases() {
+		for (String k : new HashSet<>(keySet())) {
+			if (k.endsWith(":")) {
+				String alias = k.substring(0, k.length() - 1);
+				if (!containsKey(alias))
+					putTyped(alias, getTyped(k));
+			}
+		}
 	}
 }

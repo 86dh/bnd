@@ -93,6 +93,8 @@ public abstract class Domain implements Iterable<String> {
 	}
 
 	public static Domain domain(final Manifest manifest) {
+		if (manifest == null)
+			return domain(new Attrs());
 		Attributes attrs = manifest.getMainAttributes();
 		return domain(attrs);
 	}
@@ -235,9 +237,10 @@ public abstract class Domain implements Iterable<String> {
 		return p;
 	}
 
+	@SuppressWarnings("deprecation")
 	public Parameters getIncludeResource() {
-		Parameters ic = getParameters(INCLUDE_RESOURCE);
-		ic.putAll(getParameters(INCLUDERESOURCE));
+		Parameters ic = getParameters(INCLUDERESOURCE);
+		ic.putAll(getParameters(INCLUDE_RESOURCE));
 		ic.putAll(getParameters(WAB));
 		return ic;
 	}
@@ -266,7 +269,7 @@ public abstract class Domain implements Iterable<String> {
 
 	public void setIncludeResource(String s) {
 		if (s != null)
-			set(INCLUDE_RESOURCE, s);
+			set(INCLUDERESOURCE, s);
 	}
 
 	public void setBundleActivator(String s) {
@@ -570,6 +573,27 @@ public abstract class Domain implements Iterable<String> {
 
 	public void setIncludePackage(String value) {
 		set(Constants.INCLUDEPACKAGE, value);
+	}
+
+	public void setMultiRelease(boolean b) {
+		set(JPMSModule.MULTI_RELEASE_HEADER, Boolean.toString(b));
+	}
+
+	public boolean getMultiRelease() {
+		return Processor.isTrue(get(JPMSModule.MULTI_RELEASE_HEADER));
+	}
+
+	/**
+	 * Return the bundle id, which consists of the bsn + version
+	 */
+
+	public BundleId getBundleId() {
+		Entry<String, Attrs> bsn = getBundleSymbolicName();
+		if (bsn == null) {
+			return null;
+		}
+		String featureVersion = getBundleVersion();
+		return new BundleId(bsn.getKey(), featureVersion);
 	}
 
 }

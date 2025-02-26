@@ -26,6 +26,38 @@ which results in the manifest header:
 Export-Package: com.acme;version="1.3.4"
 ```
 
+### META-INF/services Annotations
+
+Some developers do not want to rely on the additional dependency of bnd/OSGi annotations. For this reason, it is possible to also apply the annotations textually in comments to the files in the `META-INF/services`.
+This trick avoids a compile time dependency. These Service Loader files have the name of a Service Loader _service_ and contain the names of the implementation classes. One fully qualified name per line.
+
+To make these annotations in the comments more readable, it is possible to import the fully qualified name of the annotation.
+```
+META-INF/services/com.example.ServiceType:
+
+   #import aQute.bnd.annotation.spi.ServiceProvider
+   #@ServiceProvider(resolution:=optional)
+   com.example.impl.Impl2
+   #@ServiceProvider(attribute:List<String>="a=1, b=2")
+   com.example.impl.Impl1
+```
+The processing is identical to the normal class based annotation processing. The `#class` macro will be set to the implementation class. The `#value` will be set in all cases to the service type unless overridden.
+
+This behavior can be controlled with the [-metainf-services](/instructions/metainf-services.html) instruction. Default is `annotation` which processes the textual annotations above, while the other convenience strategy `auto` automatically creates `Provide-Capability` headers for services without any textual annotations.
+
+<hr />
+
+While the above is a compromise, clearly using the real class annotation is far superior:
+
+* Help from the IDE
+* Impossible to make typos
+* Not necessary to manually maintain the META-INF/services/ 
+
+The analysis of these files happens after the analyzer plugins have been run. These plugins can add files if so desired.
+
+Since the annotations & imports happen in the comments, it is not possible to diagnose any errors. If the comment does not match its regular expression, it will be silently ignored.
+
+
 ### @Requirement & @Capability Annotations
 
 Though Java class files contain enough information to find code dependencies, there are many dependencies that are indirect. OSGi _extenders_ for instance are often a requirement to make a bundle function correctly but often client bundles have no code dependency on the extender. For example, Declarative Services (DS) went out of its way to allow components to be Plain Old Java Objects (POJO). The result is that resolving a closure of bundles starting from a DS client bundle would not drag in the Service Component Runtime (SCR), resulting in a satisfied but rather idle closure.

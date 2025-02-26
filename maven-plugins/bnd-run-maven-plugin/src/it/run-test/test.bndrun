@@ -1,0 +1,3 @@
+-runfw: org.eclipse.osgi
+-runrequires: osgi.identity;filter:='(osgi.identity=run-test)'
+-runbundles: run-test;version=latest

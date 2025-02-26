@@ -18,6 +18,23 @@ To access Maven Central use the following configuration:
 
 You can add `Group:Artifact:Version` coordinates in the `central.maven` file. The file can contain comments, empty lines, and can use macros per line. That is, you cannot create a macro with a load of GAV's.
 
+#### Release to Maven Central
+
+Releasing to maven Central requires usually a couple of steps. For one you usually go through a staging repositroy like the staging nexus of sonartype. They perform a couple of checks and you manually have to clear the release via their web frontend. 
+
+In case you version your bundles individually, e.g. sonartype will not complain if a Version of one Artifact in your staging repo already exists. The release will simply not work. Thus you can define a staging repository. The Release process will check against the releaseUrl if something already exists, but will upload to the staging URL. 
+
+A configuration can look like this:
+
+	-plugin.release = \
+		aQute.bnd.repository.maven.provider.MavenBndRepository; \
+			releaseUrl=https://repo.maven.apache.org/maven2/; \
+			stagingUrl=https://oss.sonatype.org/service/local/staging/deploy/maven2/; \
+			index=${.}/release.maven; \
+			name="Release"
+
+
+
 ### Use of .m2 Local Repository
 
 To use your local Maven repository (`~/.m2/repository`) you can define the following plugin:
@@ -63,12 +80,14 @@ The class name of the plugin is `aQute.bnd.repository.maven.provider.MavenBndRep
 |------------------|-------|---------|-------------|
 | `releaseUrl`     | `URI` |         | Comma separated list of URLs to the repositories of released artifacts.|
 | `snapshotUrl`    | `URI` |         | Comma separated list of URLs to the repositories of snapshot artifacts.|
+| `stagingUrl`    | `URI` |         | A single URL to the repositories staging repository. THis is required, e.g. for a release to maven central, which usually goes through a staging repository.|
 | `local`          | `PATH`| `~/.m2/repository` | The file path to the local Maven repository.  |
 |                  |       |                    | If specified, it should use forward slashes. If the directory does not exist, the plugin will attempt to create it.|
 |                  |       |         | The default can be overridden with the `maven.repo.local` System property.|
 | `readOnly`       | `true|false` | `false` | If set to _truthy_ then this repository is read only.|
 | `name`           | `NAME`| `Maven` | The name of the repository.|
 | `index`          | `PATH`| `cnf/<name>.mvn` | The path to the _index_ file. The index file is a list of Maven _coordinates_.|
+| `tags`           | `STRING`|  | Comma separated list of tags. (e.g. resolve, baseline, release) Use a placeholder like &lt;&lt;EMPTY&gt;&gt; to exclude the repo from resolution. The `resolve` tag is picked up by the [-runrepos](/instructions/runrepos.html) instruction.|
 | `source`         | `STRING`| `org.osgi:org.osgi.service.log:1.3.0 org.osgi:org.osgi.service.log:1.2.0` | A space, comma, semicolon, or newline separated GAV string. |
 | `noupdateOnRelease` | `true|false` | `false` | If set to _truthy_ then this repository will not update the `index` when a non-snapshot artifact is released.|
 | `poll.time`      | `integer` | 5 seconds | Number of seconds between checks for changes to the `index` file. If the value is negative or the workspace is in batch/CI mode, then no polling takes place.|
@@ -76,7 +95,7 @@ The class name of the plugin is `aQute.bnd.repository.maven.provider.MavenBndRep
 
 If no `releaseUrl` nor a `snapshotUrl` are specified then the repository is _local only_. 
 
-For finding archives, both URLs are used, first `releaseUrl`.
+For finding archives, both URLs are used. For releasing, only the first or the `stagingUrl` is used.
 
 The `index` file specifies a view on the remote repository, it _scopes_ it. Since we use the bnd repositories to resolve against, it is impossible to resolve against the world. The index file falls under source control, it is stored in the source control management system. This guarantees that at any time the project is checked out it has the same views on its repository. This is paramount to prevent build breackages due to changes in repositories.
 
@@ -131,6 +150,10 @@ In Maven, revisions that end in `-SNAPSHOT` are treated special in many places. 
 ## Authentication
 
 The Maven Bnd Repository uses the bnd Http Client. See the [-connection-settings] instruction for how to set the proxy and authentication information.
+
+## Tagging
+
+This plugin supports Tagging via the `tags` configuration property. See [Tagging of repository plugins](/chapters/870-plugins.html#tagging-of-repository-plugins) for more details.
 
 ## IDEs
 

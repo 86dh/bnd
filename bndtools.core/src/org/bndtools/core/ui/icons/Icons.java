@@ -20,9 +20,29 @@ import bndtools.Plugin;
 
 public final class Icons {
 
-	private static final String		ICONS_MISSING_GIF	= "icons/missing.gif";
-	private static ISharedImages	shared				= PlatformUI.getWorkbench()
-		.getSharedImages();
+	private static final String			ICONS_MISSING_GIF	= "icons/missing.gif";
+	private static final ISharedImages	shared;
+	static {
+		ISharedImages images;
+		try {
+			images = PlatformUI.getWorkbench()
+				.getSharedImages();
+		} catch (Throwable e) {
+			images = new ISharedImages() {
+				@Override
+				public Image getImage(String symbolicName) {
+					return null;
+				}
+
+				@Override
+				public ImageDescriptor getImageDescriptor(String symbolicName) {
+					return null;
+				}
+			};
+		}
+		shared = images;
+
+	}
 
 	private static class Key {
 		final String	name;
@@ -131,8 +151,11 @@ public final class Icons {
 
 		Key k = new Key(name);
 		synchronized (images) {
-			Image image = desc.createImage();
-			images.put(k, image);
+			Image image = images.get(k);
+			if (image == null) {
+				image = desc.createImage();
+				images.put(k, image);
+			}
 			return image;
 		}
 	}
@@ -145,7 +168,11 @@ public final class Icons {
 				return image;
 
 			if (decorators.length == 0) {
-				Image baseImage = desc(name).createImage();
+				ImageDescriptor desc = desc(name, false);
+				if (desc == null) {
+					desc = desc(ICONS_MISSING_GIF);
+				}
+				Image baseImage = desc.createImage();
 				images.put(k, baseImage);
 				return baseImage;
 			}

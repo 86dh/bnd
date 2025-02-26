@@ -11,17 +11,42 @@ A Workspace is a single directory with all its sub-directories and their files, 
 
 Workspaces should be named according to the bundle symbolic names of its projects. Using such a naming strategy will simplify finding the correct namespace given a bundle symbolic name. 
 
-A bndlib workspace is a _valid_ workspace when it contains a `cnf` file. If this is a text file, its content is read and interpreted as a path to the `cnf` directory (which can again be a path to a cnf directory, ad infinitum). The retrieved path is retrieved and trimmed after which it is resolved relative to its parent directory.   
+A bndlib workspace is a _valid_ workspace when it contains a `cnf` file. If this is a text file, its content is read and interpreted as a path to the `cnf` directory (which can again be a path to a cnf directory, ad infinitum). The retrieved path is trimmed after which it is resolved relative to its parent directory.   
 
 However, the advised model is to use a directory with a `cnf/build.bnd` file. The purpose of the `cnf` directory is to provide a place for shared information. Though this includes bndlib setup information, it also can be used to define for example shared licensing, copyright, and vendor headers for your organization.
 
-The `cnf` directory can have an `ext` directory, this directory contains any extensions to bnd.
+### The cnf/ext directory
+
+The `cnf` directory can have an `ext` directory. Files in this directory are added to the properties
+of the workspace. They can have the following extensions:
+
+* `.bnd` – Contain bnd properties
+* `.pmvn` – An index file for a [Maven Bnd Repository](/plugins/maven.html). The first lines can contain properties for this plugin in the format of `# key = value`, e.g. `# name = OSGi R8`. 
+* `.pobr` – An OSGi Repository file in XML.
+
+#### Automatically registering repositories
+
+Files with `.pmvn` or `.pobr` will be automatically registered as a Repository and show up in the Repository browser (means, no Plugin configuration needed). This is a convenience shortcut to add a repository with almost no configuration.
+
+**Example /cnf/ext/central.pmvn file:**
+
+```
+# name = My Maven Central Repo
+# releaseUrl = https://repo.maven.apache.org/maven2/
+# tags = resolve
+biz.aQute.bnd:biz.aQute.bndlib:7.0.0
+biz.aQute.bnd:aQute.libg:7.0.0
+
+```
+
+
+The `ext` directory is a convenient way to add add reusable components. See [template fragments](620-template-fragments.html) how they can be used to manage workspaces. When files change in this directory the workspace will be reloaded.
+
+### The cnf/cache directory
 
 To cache some intermediate files, bndlib will create a `cnf/cache/` directory, this file should not be under source control. E.g. in Git it should be defined in the `.gitignore` file. 
 
-The root of the workspace is generally used to hold other files. For example the `.git` directory for Git, or gradle and ant files for continuous integration. However, designers that add functionality to the workspace should strive to minimize the clutter in the root. For example, the bnd gradle support adds a few files to the root but these link to a `cnf/gradle` directory for their actual content.
-
-Other directories in the workspace represent _projects_. The name of the project is the bundle symbolic name of the bundle that it produces (or the prefix of the bundle symbolic name when it produces multiple bundles).
+### Folder structure
 
 Overall, this gives us the following layout for a workspace:
 
@@ -34,11 +59,39 @@ Overall, this gives us the following layout for a workspace:
 	    cache/                          bnd cache directory, should not be saved in an scm
 	  com.acme.prime.speaker/           project directory	  
 
+The root of the workspace is generally used to hold other files. For example the `.git` directory for Git, or gradle and ant files for continuous integration. However, designers that add functionality to the workspace should strive to minimize the clutter in the root. For example, the bnd gradle support adds a few files to the root but these link to a `cnf/gradle` directory for their actual content.
+
+Other directories in the workspace represent _projects_. The name of the project is the bundle symbolic name of the bundle that it produces (or the prefix of the bundle symbolic name when it produces multiple bundles).
+
+
 ### Workspace Properties
 
 Properties are used for headers, macros, and instructions in bndlib, they are quite fundamental. To simplify maintenance, bndlib provides an elaborate mechanism to provide these properties from different places and _inherit_ them. The workspace resides at the top of this inheritance chain (ok, after the built-in defaults).
 
 When a workspace is created, it will first read in the properties in the `.bnd` files in the `cnf/ext` directory. These are called the _extension files_ since they in general setup plugins and other extensions. The order in which they are read is the lexical sorting order of their file names.
+
+## Target build directory
+
+The `target-dir` defines where the build process places the build output artifacts. By default this folder is named `generated`.
+
+### Avoiding target-dir conflicts between different build tools
+
+In the default setup of the workspace, the gradle build tool & eclipse share the same output directories. In general, this means you always have to clean in each tool and in the case of Eclipse stop the incremental builder (otherwise eclipse will start rebuilding the whole workspace when you do a `gradle clean build`).
+
+All the output directories are defined in macros. In general, the `${target-dir}` is the main output directory and the `${bin}` and `${testbin}` are placed inside this directory. So by redefining `${target-dir}` in `cnf/build.bnd` we can redirect all output.
+
+bnd has a macro `${driver}` that indicates which build tool (a.k.a. the driver) is used. We can then use this as follows, to use a separate output directory for each build tool (e.g. eclipse, gradle, maven):
+
+```
+target-dir              generated${if;${driver;eclipse};;/${driver}}
+bin                     ${target-dir}/classes
+testbin                 ${target-dir}/test-classes
+````
+
+This example configuration, placed in `cnf/build.bnd` means:
+
+- eclipse build puts the build output directly into  the `generated` folder of each project.
+- gradle build puts the build outputs in `generated/gradle`. 
 
 ### Extension Files
 

@@ -21,6 +21,8 @@ defaults:
 
 permissions:
   contents: read
+  pages: write
+  id-token: write
 
 jobs:
   docs:
@@ -31,18 +33,49 @@ jobs:
       BUNDLE_PATH: vendor/bundle
     steps:
     - name: Harden Runner
-      uses: step-security/harden-runner@ebacdc22ef6c2cfb85ee5ded8f2e640f4c776dd5
+      uses: step-security/harden-runner@4d991eb9b905ef189e4c376166672c3f2f230481
       with:
         egress-policy: audit # TODO: change to 'egress-policy: block' after couple of runs
 
     - name: Git Checkout
-      uses: actions/checkout@93ea575cb5d8a053eaa0ac8fa3b40d7e05a33cc8
+      uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
     - name: Set up Ruby
-      uses: ruby/setup-ruby@8ddb7b3348b3951590db24c346e94ebafdabc926
+      uses: ruby/setup-ruby@32110d4e311bd8996b2a82bf2a43b714ccc91777
       with:
         ruby-version: 2.7
         bundler-cache: true
         working-directory: docs
+
+    # Download and install the Pagefind binary
+    # see releases: https://github.com/CloudCannon/pagefind/releases
+    - name: Install Pagefind for Search
+      run: |
+        cd docs
+        curl -L https://github.com/CloudCannon/pagefind/releases/download/v1.3.0/pagefind-v1.3.0-x86_64-unknown-linux-musl.tar.gz \
+          -o pagefind.tar.gz
+        tar xzf pagefind.tar.gz
+        chmod +x pagefind
+
     - name: Build
       run: |
         ./.github/scripts/docs.sh
+
+    - name: Upload artifact
+      id: deployment
+      #  uploads an artifact from the './docs/_site' directory
+      uses: actions/upload-pages-artifact@v3
+      with:
+          path: docs/_site
+
+  # Deployment job
+  deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    needs: docs
+    if: github.ref == 'refs/heads/master'  # <= Restrict deploy to master
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

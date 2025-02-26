@@ -155,10 +155,9 @@ public class DSAnnotationReader extends ClassDataCollector {
 			if (clazz.is(ANNOTATED, COMPONENT_INSTR, analyzer)) {
 				DeclarativeServicesAnnotationError details = new DeclarativeServicesAnnotationError(clazz.getFQN(),
 					null, ErrorType.INVALID_COMPONENT_TYPE);
-				analyzer
-					.error("[%s] The type is not a class and therefore not suitable for the @Component annotation",
-						details.location())
-					.details(details);
+				details.addError(analyzer,
+					"[%s] The type is not a class and therefore not suitable for the @Component annotation",
+					details.location());
 			}
 			return null;
 		}
@@ -183,8 +182,8 @@ public class DSAnnotationReader extends ClassDataCollector {
 				if (ec == null) {
 					DeclarativeServicesAnnotationError details = new DeclarativeServicesAnnotationError(
 						className.getFQN(), null, null, ErrorType.UNABLE_TO_LOCATE_SUPER_CLASS);
-					analyzer.error("[%s] Missing super class for DS annotations %s", details.location(), extendsClass)
-						.details(details);
+					details.addError(analyzer, "[%s] Missing super class for DS annotations %s", details.location(),
+						extendsClass);
 					break;
 				} else {
 					ec.parseClassFileWithCollector(this);
@@ -196,11 +195,11 @@ public class DSAnnotationReader extends ClassDataCollector {
 				rdef.unbind = referredMethod(analyzer, rdef, rdef.unbind, unbind1, unbind2);
 				rdef.updated = referredMethod(analyzer, rdef, rdef.updated, updated1, updated2);
 
-				if (rdef.policy == ReferencePolicy.DYNAMIC && rdef.unbind == null)
-					analyzer
-						.error("In component class %s, reference %s is dynamic but has no unbind method.",
-							className.getFQN(), rdef.name)
-						.details(getDetails(rdef, ErrorType.DYNAMIC_REFERENCE_WITHOUT_UNBIND));
+				if (rdef.policy == ReferencePolicy.DYNAMIC && rdef.unbind == null) {
+					addError(rdef, ErrorType.DYNAMIC_REFERENCE_WITHOUT_UNBIND,
+						"In component class %s, reference %s is dynamic but has no unbind method.",
+					className.getFQN(), rdef.name);
+				}
 			}
 		}
 		return component;
@@ -298,20 +297,14 @@ public class DSAnnotationReader extends ClassDataCollector {
 	}
 
 	private void handleMixedUsageError(Annotation annotation) throws Exception {
-		DeclarativeServicesAnnotationError errorDetails;
-		switch (annotation.elementType()) {
-			case METHOD :
-				errorDetails = new DeclarativeServicesAnnotationError(className.getFQN(), member.getName(),
-					member.descriptor(), ErrorType.MIXED_USE_OF_DS_ANNOTATIONS_STD);
-				break;
-			case FIELD :
-				errorDetails = new DeclarativeServicesAnnotationError(className.getFQN(), member.getName(),
-					ErrorType.MIXED_USE_OF_DS_ANNOTATIONS_STD);
-				break;
-			default :
-				errorDetails = new DeclarativeServicesAnnotationError(className.getFQN(), null,
-					ErrorType.MIXED_USE_OF_DS_ANNOTATIONS_STD);
-		}
+		DeclarativeServicesAnnotationError errorDetails = switch (annotation.elementType()) {
+			case METHOD -> new DeclarativeServicesAnnotationError(className.getFQN(), member.getName(),
+				member.descriptor(), ErrorType.MIXED_USE_OF_DS_ANNOTATIONS_STD);
+			case FIELD -> new DeclarativeServicesAnnotationError(className.getFQN(), member.getName(),
+				ErrorType.MIXED_USE_OF_DS_ANNOTATIONS_STD);
+			default -> new DeclarativeServicesAnnotationError(className.getFQN(), null,
+				ErrorType.MIXED_USE_OF_DS_ANNOTATIONS_STD);
+		};
 		String fqn = annotation.getName()
 			.getFQN();
 		List<DeclarativeServicesAnnotationError> errors = mismatchedAnnotations.get(fqn);
@@ -413,31 +406,28 @@ public class DSAnnotationReader extends ClassDataCollector {
 					// field type is ReferenceTypeSignature
 					FieldResolver resolver = new FieldResolver(classSig, fieldSig);
 					ReferenceTypeSignature type = resolver.resolveField();
-					if (type instanceof ClassTypeSignature) {
+					if (type instanceof ClassTypeSignature param) {
 						component.activation_fields.add(member.getName());
 						component.updateVersion(V1_4, "field type is ReferenceTypeSignature???");
-						ClassTypeSignature param = (ClassTypeSignature) type;
 						String propertyDefKey = String.format(ComponentDef.PROPERTYDEF_FIELDFORMAT, member.getName());
 						processActivationObject(propertyDefKey, param, memberDescriptor, details, false);
 						break;
 					}
 				}
-				analyzer.error("[%s] Invalid activation object type %s", details.location(), member.descriptor())
-					.details(details);
-
+				details.addError(analyzer, "[%s] Invalid activation object type %s", details.location(),
+					member.descriptor());
 				break;
 			}
 			case CONSTRUCTOR : {
 				DeclarativeServicesAnnotationError details = new DeclarativeServicesAnnotationError(className.getFQN(),
 					member.getName(), memberDescriptor, ErrorType.CONSTRUCTOR_SIGNATURE_ERROR);
 				if (component.init != null) {
-					analyzer.error("[%s] Multiple constructors are annotated @Activate.", details.location())
-						.details(details);
+					details.addError(analyzer, "[%s] Multiple constructors are annotated @Activate.",
+						details.location());
 					break;
 				}
 				if (!member.isPublic()) {
-					analyzer.error("[%s] Constructors must be public access.", details.location())
-						.details(details);
+					details.addError(analyzer, "[%s] Constructors must be public access.", details.location());
 					break;
 				}
 				constructorSig = methodSig;
@@ -502,15 +492,14 @@ public class DSAnnotationReader extends ClassDataCollector {
 		MethodResolver resolver = new MethodResolver(classSig, methodSig);
 		for (int arg = 0; arg < methodSig.parameterTypes.length; arg++) {
 			JavaTypeSignature type = resolver.resolveParameter(arg);
-			if (type instanceof ClassTypeSignature) {
-				ClassTypeSignature param = (ClassTypeSignature) type;
+			if (type instanceof ClassTypeSignature param) {
 				String propertyDefKey = String.format(propertyDefKeyFormat, arg);
 				processActivationObject(propertyDefKey, param, memberDescriptor, details, deactivate);
 			} else if (deactivate && (type == BaseType.I)) {
 				component.updateVersion(V1_1, "deactivate(int)");
 			} else {
-				analyzer.error("[%s] Invalid activation object type %s for parameter %s", details.location(), type, arg)
-					.details(details);
+				details.addError(analyzer, "[%s] Invalid activation object type %s for parameter %s",
+					details.location(), type, arg);
 			}
 		}
 		Result resultType = resolver.resolveResult();
@@ -520,12 +509,10 @@ public class DSAnnotationReader extends ClassDataCollector {
 		/**
 		 * Felix SCR allows Map return type.
 		 */
-		if ((resultType instanceof ClassTypeSignature)
-			&& ((ClassTypeSignature) resultType).binary.equals("java/util/Map")) {
+		if ((resultType instanceof ClassTypeSignature param) && param.binary.equals("java/util/Map")) {
 			checkMapReturnType(details);
 		} else {
-			analyzer.error("[%s] Invalid return type type %s", details.location(), resultType)
-				.details(details);
+			details.addError(analyzer, "[%s] Invalid return type type %s", details.location(), resultType);
 		}
 	}
 
@@ -540,15 +527,12 @@ public class DSAnnotationReader extends ClassDataCollector {
 		for (int arg = constructorArg; arg < toArg; arg++) {
 			// validate activation object as methodSig.
 			JavaTypeSignature type = resolver.resolveParameter(arg);
-			if (type instanceof ClassTypeSignature) {
-				ClassTypeSignature param = (ClassTypeSignature) type;
+			if (type instanceof ClassTypeSignature param) {
 				String propertyDefKey = String.format(ComponentDef.PROPERTYDEF_CONSTRUCTORFORMAT, arg);
 				processActivationObject(propertyDefKey, param, memberDescriptor, details, false);
 			} else {
-				analyzer
-					.error("[%s] Invalid activation object type %s for constructor parameter %s", details.location(),
-						type, arg)
-					.details(details);
+				details.addError(analyzer, "[%s] Invalid activation object type %s for constructor parameter %s",
+					details.location(), type, arg);
 			}
 		}
 	}
@@ -579,10 +563,9 @@ public class DSAnnotationReader extends ClassDataCollector {
 					} else if (clazz.isInterface() && options.contains(Options.felixExtensions)) {
 						component.updateVersion(V1_3, "Felix interface type??");
 					} else {
-						analyzer
-							.error("[%s] Non annotation type for activation object with descriptor %s, type %s",
-								details.location(), memberDescriptor, param.binary)
-							.details(details);
+						details.addError(analyzer,
+							"[%s] Non annotation type for activation object with descriptor %s, type %s",
+							details.location(), memberDescriptor, param.binary);
 					}
 				} catch (Exception e) {
 					analyzer.exception(e,
@@ -731,8 +714,8 @@ public class DSAnnotationReader extends ClassDataCollector {
 			if (prefixField != null) {
 				Object c = prefixField.getConstant();
 				if (prefixField.isFinal() && (prefixField.getType() == analyzer.getTypeRef("java/lang/String"))
-					&& (c instanceof String)) {
-					prefix = (String) c;
+					&& (c instanceof String p)) {
+					prefix = p;
 
 					// If we have a member descriptor then this is an injected
 					// component property type and the prefix must be processed
@@ -959,18 +942,17 @@ public class DSAnnotationReader extends ClassDataCollector {
 					if (m.matches()) {
 						def.name = m.group("name");
 					} else {
-						analyzer.error("In component '%s', invalid name for bind method '%s'", className, def.bind)
-							.details(getDetails(def, ErrorType.INVALID_REFERENCE_BIND_METHOD_NAME));
+						addError(def, ErrorType.INVALID_REFERENCE_BIND_METHOD_NAME,
+							"In component '%s', invalid name for bind method '%s'", className, def.bind);
 					}
 				}
 
 				def.service = determineMethodReferenceType(def, (MethodDef) member, methodSig, annoService);
 
 				if (def.service == null) {
-					analyzer
-						.error("In component '%s', cannot recognize the signature of method '%s': %s",
-							className, def.bind, methodSig)
-						.details(getDetails(def, ErrorType.REFERENCE));
+					addError(def, ErrorType.REFERENCE,
+						"In component '%s', cannot recognize the signature of method '%s': %s", className, def.bind,
+						methodSig);
 				}
 				break;
 			}
@@ -1002,10 +984,9 @@ public class DSAnnotationReader extends ClassDataCollector {
 						}
 						if (def.isOptional && (def.cardinality != ReferenceCardinality.OPTIONAL)
 							&& (def.cardinality != ReferenceCardinality.MANDATORY)) {
-							analyzer.error(
+							addError(def, ErrorType.OPTIONAL_FIELD_WITH_MULTIPLE,
 								"In component '%s', field '%s' is 'Optional' but cardinality is not '0..1' or '1..1'.",
-								className, def.field)
-								.details(getDetails(def, ErrorType.OPTIONAL_FIELD_WITH_MULTIPLE));
+								className, def.field);
 						}
 					}
 					if ((def.fieldOption == null) && (def.policy == ReferencePolicy.DYNAMIC)
@@ -1016,61 +997,52 @@ public class DSAnnotationReader extends ClassDataCollector {
 					}
 					if (def.fieldOption == FieldOption.UPDATE) {
 						if (def.policy != ReferencePolicy.DYNAMIC) {
-							analyzer
-								.error(
+							addError(def, ErrorType.UPDATE_FIELD_WITH_STATIC,
 									"In component '%s', field '%s' fieldOption is 'update' but policy is not 'dynamic'.",
-									className, def.field)
-								.details(getDetails(def, ErrorType.UPDATE_FIELD_WITH_STATIC));
+								className, def.field);
 						}
 						if ((def.cardinality != ReferenceCardinality.MULTIPLE)
 							&& (def.cardinality != ReferenceCardinality.AT_LEAST_ONE)) {
-							analyzer.error(
+							addError(def, ErrorType.UPDATE_FIELD_WITH_UNARY,
 								"In component '%s', field '%s' fieldOption is 'update' but cardinality is not '0..n' or '1..n'.",
-								className, def.field)
-								.details(getDetails(def, ErrorType.UPDATE_FIELD_WITH_UNARY));
+								className, def.field);
 						}
 					} else { // def.fieldOption == FieldOption.REPLACE
 						if (member.isFinal()) {
-							analyzer
-								.error("In component '%s', field '%s' is final and fieldOption is not 'update'.",
+							addError(def, ErrorType.FINAL_FIELD_WITH_REPLACE,
+									"In component '%s', field '%s' has fieldOption 'replace' but the field is final.",
 									className,
-									def.field)
-								.details(getDetails(def, ErrorType.FINAL_FIELD_WITH_REPLACE));
+								def.field);
 						}
 						if ((def.policy == ReferencePolicy.DYNAMIC) && !member.isVolatile()) {
-							analyzer
-								.error("In component '%s', field '%s' policy is 'dynamic' and field is not volatile.",
-									className, def.field)
-								.details(getDetails(def, ErrorType.DYNAMIC_FIELD_NOT_VOLATILE));
+							addError(def, ErrorType.DYNAMIC_FIELD_NOT_VOLATILE,
+								"In component '%s', field '%s' policy is 'dynamic' and field is not volatile.",
+								className, def.field);
 						}
-						if (def.isCollectionSubClass) {
-							analyzer.error(
-								"In component '%s', field '%s' is a subclass of Collection and fieldOption is not 'update'.",
-								className, def.field)
-								.details(getDetails(def, ErrorType.COLLECTION_SUBCLASS_FIELD_WITH_REPLACE));
+						if (def.isNotDirectlyListOrCollection) {
+							addError(def, ErrorType.COLLECTION_SUBCLASS_FIELD_WITH_REPLACE,
+								"In component '%s', field '%s' is a collection type with fieldOption 'replace' but the type of the field is not declared as 'List' or 'Collection'.",
+								className, def.field);
 						}
 					}
 				} else {
-					analyzer
-						.error("In component '%s', cannot recognize the signature of field '%s': %s",
-							className, def.field, (type != null) ? type : member.descriptor())
-						.details(getDetails(def, ErrorType.REFERENCE));
+					addError(def, ErrorType.REFERENCE,
+						"In component '%s', cannot recognize the signature of field '%s': %s", className, def.field,
+						(type != null) ? type : member.descriptor());
 				}
 				break;
 			}
 			case PARAMETER : {
 				if (!"<init>".equals(member.getName())) {
-					analyzer.error(
+					addError(def, ErrorType.REFERENCE,
 						"In component '%s', @Reference can be used on parameters only for constructors; method '%s' is not a constructor",
-						className, member)
-						.details(getDetails(def, ErrorType.REFERENCE));
+						className, member);
 					return;
 				}
 				if (constructorSig == null) {
-					analyzer.error(
+					addError(def, ErrorType.CONSTRUCTOR_SIGNATURE_ERROR,
 						"In component '%s', @Reference can only be used for parameters on the constructor annotated @Activate",
-						className)
-						.details(getDetails(def, ErrorType.CONSTRUCTOR_SIGNATURE_ERROR));
+						className);
 					return;
 				}
 
@@ -1095,8 +1067,8 @@ public class DSAnnotationReader extends ClassDataCollector {
 				def.service = determineReferenceType(def, type, resolver, annoService);
 				if (def.service != null) {
 					if (def.policy == ReferencePolicy.DYNAMIC) {
-						analyzer.error("In component '%s', constructor parameters may not be dynamic", className)
-							.details(getDetails(def, ErrorType.CONSTRUCTOR_SIGNATURE_ERROR));
+						addError(def, ErrorType.CONSTRUCTOR_SIGNATURE_ERROR,
+							"In component '%s', constructor parameters may not be dynamic", className);
 						def.policy = ReferencePolicy.STATIC;
 					}
 					if (def.isCollection) {
@@ -1109,40 +1081,35 @@ public class DSAnnotationReader extends ClassDataCollector {
 						}
 						if (def.isOptional && (def.cardinality != ReferenceCardinality.OPTIONAL)
 							&& (def.cardinality != ReferenceCardinality.MANDATORY)) {
-							analyzer.error(
+							addError(def, ErrorType.OPTIONAL_FIELD_WITH_MULTIPLE,
 								"In component '%s', constructor argument %s is 'Optional' but cardinality is not '0..1' or '1..1'.",
-								className, def.parameter)
-								.details(getDetails(def, ErrorType.OPTIONAL_FIELD_WITH_MULTIPLE));
+								className, def.parameter);
 						}
-						if (def.isCollectionSubClass) {
-							analyzer.error(
-								"In component '%s', constructor argument %s is a subclass of Collection but this is not allowed for a constructor parameter",
-								className, def.parameter)
-								.details(getDetails(def, ErrorType.CONSTRUCTOR_SIGNATURE_ERROR));
+						if (def.isNotDirectlyListOrCollection) {
+							addError(def, ErrorType.CONSTRUCTOR_SIGNATURE_ERROR,
+								"In component '%s', constructor argument %s is a subclass of Collection but it must be declared as either List or Collection",
+								className, def.parameter);
 						}
 					}
 					if (def.fieldOption == FieldOption.UPDATE) {
-						analyzer.error(
+						addError(def, ErrorType.CONSTRUCTOR_SIGNATURE_ERROR,
 							"In component '%s', constructor argument %s is marked with 'update' fieldOption. Changing this to 'replace'.",
-							className, def.parameter)
-							.details(getDetails(def, ErrorType.CONSTRUCTOR_SIGNATURE_ERROR));
+							className, def.parameter);
 						def.fieldOption = null;
 					}
 				} else {
-					analyzer.error(
+					addError(def, ErrorType.REFERENCE,
 						"In component '%s', cannot recognize the signature of constructor argument %s: %s", className,
-						def.parameter, type)
-						.details(getDetails(def, ErrorType.REFERENCE));
+						def.parameter, type);
 				}
 				break;
 			}
 			case TYPE : { // reference element of Component annotation
 				def.service = annoService;
 				if (def.name == null) {
-					analyzer.error(
+					addError(def, ErrorType.MISSING_REFERENCE_NAME,
 						"In component '%s', 'name' must be specified for a @Reference specified in the @Component annotation. Service: %s",
-						className, def.service)
-						.details(getDetails(def, ErrorType.MISSING_REFERENCE_NAME));
+						className, def.service);
 					return;
 				}
 				break;
@@ -1155,28 +1122,23 @@ public class DSAnnotationReader extends ClassDataCollector {
 		if (def.target != null) {
 			String error = Verifier.validateFilter(def.target);
 			if (error != null) {
-				analyzer
-					.error("In component '%s', invalid target filter %s for %s: %s", className, def.target, def.name,
-						error)
-					.details(getDetails(def, ErrorType.INVALID_TARGET_FILTER));
+				addError(def, ErrorType.INVALID_TARGET_FILTER, "In component '%s', invalid target filter %s for %s: %s",
+					className, def.target, def.name, error);
 			}
 		}
 
 		if ("org.osgi.service.component.AnyService".equals(def.service)) {
 			def.updateVersion(V1_5, "use of AnyService");
 			if (def.target == null) {
-				analyzer
-					.error("In component '%s', @Reference name '%s' uses 'AnyService' without specifying 'target'.",
-						className, def.name)
-					.details(getDetails(def, ErrorType.ANYSERVICE_NO_TARGET));
+				addError(def, ErrorType.ANYSERVICE_NO_TARGET,
+					"In component '%s', @Reference name '%s' uses 'AnyService' without specifying 'target'.", className,
+					def.name);
 			}
 		}
 
 		if (component.references.containsKey(def.name)) {
-			analyzer
-				.error("In component '%s', multiple references with the same name: %s. Previous def: %s, this def: %s",
-					className, component.references.get(def.name), def.service, "")
-				.details(getDetails(def, ErrorType.MULTIPLE_REFERENCES_SAME_NAME));
+			addError(def, ErrorType.MULTIPLE_REFERENCES_SAME_NAME, "In component '%s', multiple references with the same name: %s. Previous def: %s, this def: %s",
+				className, component.references.get(def.name), def.service, "");
 		} else {
 			component.references.put(def.name, def);
 		}
@@ -1184,6 +1146,7 @@ public class DSAnnotationReader extends ClassDataCollector {
 
 	private DeclarativeServicesAnnotationError getDetails(ReferenceDef def, ErrorType type) {
 		if (def == null) {
+
 			return null;
 		}
 
@@ -1197,8 +1160,7 @@ public class DSAnnotationReader extends ClassDataCollector {
 		String annoService) {
 		String paramType = null;
 		String inferredService = null;
-		if (type instanceof ClassTypeSignature) {
-			ClassTypeSignature param = (ClassTypeSignature) type;
+		if (type instanceof ClassTypeSignature param) {
 			paramType = binaryToFQN(param.binary);
 			// Check for collection
 			switch (paramType) {
@@ -1210,7 +1172,7 @@ public class DSAnnotationReader extends ClassDataCollector {
 					// check for subtype of Collection
 					if (analyzer.assignable(paramType, "java.util.Collection", false)) {
 						def.isCollection = true;
-						def.isCollectionSubClass = true;
+						def.isNotDirectlyListOrCollection = true;
 					}
 					break;
 				case "java.util.Optional" :
@@ -1224,9 +1186,9 @@ public class DSAnnotationReader extends ClassDataCollector {
 				TypeArgument[] typeArguments = param.classType.typeArguments;
 				if (typeArguments.length != 0) {
 					ReferenceTypeSignature inferred = resolver.resolveType(typeArguments[0]);
-					if (inferred instanceof ClassTypeSignature) {
+					if (inferred instanceof ClassTypeSignature inferredParam) {
 						def.collectionType = CollectionType.SERVICE;
-						param = (ClassTypeSignature) inferred;
+						param = inferredParam;
 						paramType = binaryToFQN(param.binary);
 					}
 				}
@@ -1242,8 +1204,8 @@ public class DSAnnotationReader extends ClassDataCollector {
 						TypeArgument[] typeArguments = param.classType.typeArguments;
 						if (typeArguments.length != 0) {
 							ReferenceTypeSignature inferred = resolver.resolveType(typeArguments[0]);
-							if (inferred instanceof ClassTypeSignature) {
-								inferredService = binaryToFQN(((ClassTypeSignature) inferred).binary);
+							if (inferred instanceof ClassTypeSignature inferredParam) {
+								inferredService = binaryToFQN(inferredParam.binary);
 							}
 						}
 					}
@@ -1256,8 +1218,8 @@ public class DSAnnotationReader extends ClassDataCollector {
 						TypeArgument[] typeArguments = param.classType.typeArguments;
 						if (typeArguments.length != 0) {
 							ReferenceTypeSignature inferred = resolver.resolveType(typeArguments[0]);
-							if (inferred instanceof ClassTypeSignature) {
-								inferredService = binaryToFQN(((ClassTypeSignature) inferred).binary);
+							if (inferred instanceof ClassTypeSignature inferredParam) {
+								inferredService = binaryToFQN(inferredParam.binary);
 							}
 						}
 					}
@@ -1277,8 +1239,8 @@ public class DSAnnotationReader extends ClassDataCollector {
 						TypeArgument[] typeArguments = param.innerTypes[0].typeArguments;
 						if (typeArguments.length != 0) {
 							ReferenceTypeSignature inferred = resolver.resolveType(typeArguments[1]);
-							if (inferred instanceof ClassTypeSignature) {
-								inferredService = binaryToFQN(((ClassTypeSignature) inferred).binary);
+							if (inferred instanceof ClassTypeSignature inferredParam) {
+								inferredService = binaryToFQN(inferredParam.binary);
 							}
 						}
 					}
@@ -1318,18 +1280,16 @@ public class DSAnnotationReader extends ClassDataCollector {
 		boolean hasMapResultType = false;
 		Result resultType = resolver.resolveResult();
 		if (!(resultType instanceof VoidDescriptor)) {
-			if ((resultType instanceof ClassTypeSignature)
-				&& ((ClassTypeSignature) resultType).binary.equals("java/util/Map")) {
+			if ((resultType instanceof ClassTypeSignature param) && param.binary.equals("java/util/Map")) {
 				hasMapResultType = true;
 			} else {
 				return null;
 			}
 		}
 		JavaTypeSignature first = resolver.resolveParameter(0);
-		if (!(first instanceof ClassTypeSignature)) {
+		if (!(first instanceof ClassTypeSignature param)) {
 			return null;
 		}
-		ClassTypeSignature param = (ClassTypeSignature) first;
 		Version minVersion = null;
 		String minReason = null;
 		switch (parameterCount) {
@@ -1341,8 +1301,7 @@ public class DSAnnotationReader extends ClassDataCollector {
 				break;
 			case 2 :
 				JavaTypeSignature type = resolver.resolveParameter(1);
-				if ((type instanceof ClassTypeSignature)
-					&& ((ClassTypeSignature) type).binary.equals("java/util/Map")) {
+				if ((type instanceof ClassTypeSignature typeParam) && typeParam.binary.equals("java/util/Map")) {
 					minVersion = V1_1;
 					minReason = "use of map in method reference in second position";
 				} else {
@@ -1367,8 +1326,8 @@ public class DSAnnotationReader extends ClassDataCollector {
 					TypeArgument[] typeArguments = param.classType.typeArguments;
 					if (typeArguments.length != 0) {
 						ReferenceTypeSignature inferred = resolver.resolveType(typeArguments[0]);
-						if (inferred instanceof ClassTypeSignature) {
-							inferredService = binaryToFQN(((ClassTypeSignature) inferred).binary);
+						if (inferred instanceof ClassTypeSignature inferredParam) {
+							inferredService = binaryToFQN(inferredParam.binary);
 						}
 					}
 				}
@@ -1379,8 +1338,8 @@ public class DSAnnotationReader extends ClassDataCollector {
 					TypeArgument[] typeArguments = param.classType.typeArguments;
 					if (typeArguments.length != 0) {
 						ReferenceTypeSignature inferred = resolver.resolveType(typeArguments[0]);
-						if (inferred instanceof ClassTypeSignature) {
-							inferredService = binaryToFQN(((ClassTypeSignature) inferred).binary);
+						if (inferred instanceof ClassTypeSignature inferredParam) {
+							inferredService = binaryToFQN(inferredParam.binary);
 						}
 					}
 				}
@@ -1419,12 +1378,10 @@ public class DSAnnotationReader extends ClassDataCollector {
 
 	private void checkMapReturnType(DeclarativeServicesAnnotationError details) {
 		if (!options.contains(Options.felixExtensions)) {
-			analyzer
-				.error(
-					"[%s] To use a return type of Map you must specify the -dsannotations-options felixExtensions flag "
-						+ " and use a felix extension attribute or explicitly specify the appropriate xmlns.",
-					details.location())
-				.details(details);
+			details.addError(analyzer,
+				"[%s] To use a return type of Map you must specify the -dsannotations-options felixExtensions flag "
+					+ " and use a felix extension attribute or explicitly specify the appropriate xmlns.",
+				details.location());
 		}
 	}
 
@@ -1439,10 +1396,9 @@ public class DSAnnotationReader extends ClassDataCollector {
 		if (!mismatchedAnnotations.isEmpty()) {
 			for (Entry<String, List<DeclarativeServicesAnnotationError>> e : mismatchedAnnotations.entrySet()) {
 				for (DeclarativeServicesAnnotationError errorDetails : e.getValue()) {
-					analyzer.error(
+					errorDetails.addError(analyzer,
 						"[%s] The DS component %s uses standard annotations to declare it as a component, but also uses the bnd DS annotation: %s. It is an error to mix these two types of annotations",
-						errorDetails.location(), componentName, e.getKey())
-						.details(errorDetails);
+						errorDetails.location(), componentName, e.getKey());
 				}
 			}
 			return;
@@ -1518,10 +1474,8 @@ public class DSAnnotationReader extends ClassDataCollector {
 					try {
 						Clazz service = analyzer.findClass(typeRef);
 						if (!analyzer.assignable(clazz, service)) {
-							analyzer
-								.error("[%s] The component is not assignable to specified service %s",
-									details.location(), typeRef.getFQN())
-								.details(details);
+							details.addError(analyzer, "[%s] The component is not assignable to specified service %s",
+								details.location(), typeRef.getFQN());
 						}
 					} catch (Exception e) {
 						analyzer
@@ -1572,8 +1526,7 @@ public class DSAnnotationReader extends ClassDataCollector {
 		if (member.isStatic()) {
 			return true; // ignore static members
 		}
-		if (member instanceof MethodDef) {
-			MethodDef method = (MethodDef) member;
+		if (member instanceof MethodDef method) {
 			if (method.isAbstract() // ignore abstract methods
 				|| method.isBridge() // ignore bridge methods
 				|| method.isSynthetic() // ignore synthetic methods
@@ -1601,14 +1554,14 @@ public class DSAnnotationReader extends ClassDataCollector {
 			return analyzer.getFieldSignature(signature);
 		}
 		signature = field.descriptor();
-		switch (signature.charAt(0)) {
-			case 'L' : // ClassTypeSignature
-			case 'T' : // TypeVariableSignature
-			case '[' : // ArrayTypeSignature
-				return analyzer.getFieldSignature(signature);
-			default : // BaseType
-				return null;
-		}
+		return switch (signature.charAt(0)) {
+			case 'L', // ClassTypeSignature
+				'T', // TypeVariableSignature
+				'[' -> // ArrayTypeSignature
+				analyzer.getFieldSignature(signature);
+			default -> // BaseType
+				null;
+		};
 	}
 
 	@Override
@@ -1655,5 +1608,14 @@ public class DSAnnotationReader extends ClassDataCollector {
 			return clazz.toString();
 		}
 		return clazz + "#" + member;
+	}
+
+	private void addError(ReferenceDef def, ErrorType type, String message, Object... params) {
+		DeclarativeServicesAnnotationError details = getDetails(def, type);
+		if (details == null) {
+			analyzer.error(message, params);
+		} else {
+			details.addError(analyzer, message, params);
+		}
 	}
 }

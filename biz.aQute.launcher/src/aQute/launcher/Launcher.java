@@ -33,7 +33,6 @@ import java.security.AllPermission;
 import java.security.CodeSource;
 import java.security.Permission;
 import java.security.PermissionCollection;
-import java.security.Policy;
 import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
@@ -489,8 +488,14 @@ public class Launcher implements ServiceListener, FrameworkListener {
 		return list;
 	}
 
+	@SuppressWarnings("removal")
 	private int activate(String[] args) throws Exception {
-		Policy.setPolicy(new AllPolicy());
+		try {
+			java.security.Policy.setPolicy(new AllPolicy());
+		} catch (Throwable e) {
+			// ignore. Java 24 throws an Exception: Setting a
+			// system-wide Policy object is not supported
+		}
 
 		systemBundle = createFramework();
 		if (systemBundle == null)
@@ -1456,7 +1461,8 @@ public class Launcher implements ServiceListener, FrameworkListener {
 
 	static final PermissionCollection all = new AllPermissionCollection();
 
-	class AllPolicy extends Policy {
+	@SuppressWarnings("removal")
+	class AllPolicy extends java.security.Policy {
 
 		@Override
 		public PermissionCollection getPermissions(CodeSource codesource) {

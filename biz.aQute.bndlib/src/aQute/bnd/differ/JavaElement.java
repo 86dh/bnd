@@ -271,6 +271,7 @@ class JavaElement {
 		Instructions matchers = providerMatcher.get(name.getPackageRef());
 		boolean p = matchers != null && matchers.matches(shortName);
 		final AtomicBoolean provider = new AtomicBoolean(p);
+		final AtomicBoolean isExtendable = new AtomicBoolean(false);
 
 		clazz.parseClassFileWithCollector(new ClassDataCollector() {
 			boolean			memberEnd;
@@ -286,6 +287,9 @@ class JavaElement {
 				if ((defined.isProtected() || defined.isPublic())) {
 					last = defined;
 					methods.add(defined);
+					if (defined.isConstructor()) {
+						isExtendable.set(true);
+					}
 				} else {
 					last = null;
 				}
@@ -471,8 +475,8 @@ class JavaElement {
 			 * simple value which is turned into a string.
 			 */
 			private void addAnnotationMember(Collection<Element> properties, String key, Object member, Delta delta) {
-				if (member instanceof Annotation) {
-					properties.add(annotatedToElement((Annotation) member));
+				if (member instanceof Annotation annotation) {
+					properties.add(annotatedToElement(annotation));
 				} else if (member.getClass()
 					.isArray()) {
 					int l = Array.getLength(member);
@@ -481,12 +485,12 @@ class JavaElement {
 					}
 				} else {
 					StringBuilder sb = new StringBuilder();
-					sb.append(key);
-					sb.append('=');
-					if (member instanceof String) {
-						sb.append("'");
-						sb.append(member);
-						sb.append("'");
+					sb.append(key)
+						.append('=');
+					if (member instanceof String string) {
+						sb.append('\'')
+							.append(string)
+							.append('\'');
 					} else
 						sb.append(member);
 
@@ -563,6 +567,10 @@ class JavaElement {
 			remove = MAJOR;
 		}
 
+		if (clazz.isFinal()) {
+			isExtendable.set(false);
+		}
+
 		for (MethodDef m : methods) {
 			if (m.isSynthetic()) { // Ignore synthetic methods
 				continue;
@@ -594,7 +602,7 @@ class JavaElement {
 			// override a method from a super class that was not
 			// final. So we actually remove the final for methods
 			// in a final class.
-			if (clazz.isFinal())
+			if (!isExtendable.get())
 				children.remove(FINAL);
 
 			children.add(getReturn(m.getType()));
@@ -651,6 +659,9 @@ class JavaElement {
 
 		Integer inner_access_flags = innerAccess.get(clazz.getClassName());
 		int access_flags = (inner_access_flags != null) ? inner_access_flags.intValue() : clazz.getAccess();
+		if (!isExtendable.get()) {
+			access_flags |= Modifier.FINAL;
+		}
 		access(members, access_flags, clazz.isDeprecated(), provider.get());
 
 		// And make the result
@@ -676,29 +687,19 @@ class JavaElement {
 		if (!type.isPrimitive()) {
 			return type.isObject() ? OBJECT_R : new Element(RETURN, type.getFQN());
 		}
-		switch (type.getBinary()
+		return switch (type.getBinary()
 			.charAt(0)) {
-			case 'V' :
-				return VOID_R;
-			case 'Z' :
-				return BOOLEAN_R;
-			case 'S' :
-				return SHORT_R;
-			case 'I' :
-				return INT_R;
-			case 'B' :
-				return BYTE_R;
-			case 'C' :
-				return CHAR_R;
-			case 'J' :
-				return LONG_R;
-			case 'F' :
-				return FLOAT_R;
-			case 'D' :
-				return DOUBLE_R;
-			default :
-				throw new IllegalArgumentException("Unknown primitive " + type);
-		}
+			case 'V' -> VOID_R;
+			case 'Z' -> BOOLEAN_R;
+			case 'S' -> SHORT_R;
+			case 'I' -> INT_R;
+			case 'B' -> BYTE_R;
+			case 'C' -> CHAR_R;
+			case 'J' -> LONG_R;
+			case 'F' -> FLOAT_R;
+			case 'D' -> DOUBLE_R;
+			default -> throw new IllegalArgumentException("Unknown primitive " + type);
+		};
 	}
 
 	private static void access(Collection<Element> children, int access, @SuppressWarnings("unused") boolean deprecated,

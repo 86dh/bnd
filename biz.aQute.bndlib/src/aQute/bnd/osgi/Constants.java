@@ -68,6 +68,7 @@ public interface Constants {
 
 	String		PRIVATE_PACKAGE								= "Private-Package";
 	String		IGNORE_PACKAGE								= "Ignore-Package";
+	@Deprecated
 	String		INCLUDE_RESOURCE							= "Include-Resource";
 	String		CONDITIONAL_PACKAGE							= "Conditional-Package";
 	String		BND_LASTMODIFIED							= "Bnd-LastModified";
@@ -121,6 +122,7 @@ public interface Constants {
 	String		COMPRESSION									= "-compression";
 	String		DIFFIGNORE									= "-diffignore";
 	String		DIFFPACKAGES								= "-diffpackages";
+	String		DIFFPACKAGES_THRESHOLD						= "threshold";
 	String		DEPENDSON									= "-dependson";
 	String		DEPLOY										= "-deploy";
 	String		DEPLOYREPO									= "-deployrepo";
@@ -167,11 +169,16 @@ public interface Constants {
 	String		JAVAC										= "javac";
 	String		JAVA										= "java";
 	String		JAVA_DEBUG									= "java.debug";
+	String		LAUNCHER									= "-launcher";
+
 	String		MAKE										= "-make";
 	String		METATYPE_ANNOTATIONS						= "-metatypeannotations";
 	String		METATYPE_ANNOTATIONS_OPTIONS				= "-metatypeannotations-options";
 	String		MANIFEST									= "-manifest";
 	String		MAVEN_RELEASE								= "-maven-release";
+	String		MAVEN_RELEASE_CLASSIFIER					= "classifier";
+	String		MAVEN_RELEASE_ARCHIVE						= "archive";
+	String		MAVEN_RELEASE_PATH							= "path";
 	String		MAVEN_DEPENDENCIES							= "-maven-dependencies";
 	String		MAVEN_SCOPE									= "-maven-scope";
 	String		PROFILE										= "-profile";
@@ -215,6 +222,7 @@ public interface Constants {
 
 	String		RESOLVE										= "-resolve";
 	String		RESOLVEDEBUG								= "-resolvedebug";
+	String		RESOLVE_REJECT								= "-resolve.reject";
 
 	/**
 	 * Exclude the system resource from the resulting wiring in resolve. The
@@ -235,6 +243,7 @@ public interface Constants {
 	String		RUNPROVIDEDCAPABILITIES						= "-runprovidedcapabilities";
 
 	String		RUNBUNDLES									= "-runbundles";
+	String		RUNBUNDLES_DECORATOR						= RUNBUNDLES + "+";
 	String		RUNBUNDLES_STARTLEVEL_ATTRIBUTE				= "startlevel";
 
 	String		RUNSTARTLEVEL								= "-runstartlevel";
@@ -248,6 +257,13 @@ public interface Constants {
 	String		AUGMENT_REQUIREMENT_DIRECTIVE				= "requirement:";
 
 	String		REMOTEWORKSPACE								= "-remoteworkspace";
+
+	/**
+	 * tag for repos which should be used for Resolving bundles. This is also
+	 * the default tag for all repos which not have specified tags (also for bc
+	 * reasons)
+	 */
+	String		REPOTAGS_RESOLVE							= "resolve";
 
 	String		RUNBLACKLIST								= "-runblacklist";
 	String		RUNREQUIRES									= "-runrequires";
@@ -293,6 +309,14 @@ public interface Constants {
 	String		WORKINGSET_MEMBER							= "member";
 	String		REQUIRE_BND									= "-require-bnd";
 
+	/*
+	 * processing of META-INF/services folder section.
+	 */
+	String		METAINF_SERVICES							= "-metainf-services";
+	String		METAINF_SERVICES_STRATEGY_ANNOTATION		= "annotation";
+	String		METAINF_SERVICES_STRATEGY_AUTO				= "auto";
+	String		METAINF_SERVICES_STRATEGY_NONE				= "none";
+
 	// Deprecated
 	String		CLASSPATH									= "-classpath";
 	String		OUTPUT										= "-output";
@@ -313,7 +337,7 @@ public interface Constants {
 		CONNECTION_SETTINGS, RUNPROVIDEDCAPABILITIES, WORKINGSET, RUNSTORAGE, REPRODUCIBLE, INCLUDEPACKAGE,
 		CDIANNOTATIONS, REMOTEWORKSPACE, MAVEN_DEPENDENCIES, BUILDERIGNORE, STALECHECK, MAVEN_SCOPE, RUNSTARTLEVEL,
 		RUNOPTIONS, NOCLASSFORNAME, EXPORT_APIGUARDIAN, RESOLVE, DEFINE_CONTRACT, GENERATE, RUNFRAMEWORKRESTART,
-		NOIMPORTJAVA, VERSIONDEFAULTS, LIBRARY);
+		NOIMPORTJAVA, VERSIONDEFAULTS, LIBRARY, METAINF_SERVICES);
 
 	// Ignore bundle specific headers. These headers do not make a lot of sense
 	// to inherit
@@ -377,6 +401,7 @@ public interface Constants {
 	String		BUNDLE_SYMBOLIC_NAME_ATTRIBUTE				= "bundle-symbolic-name";
 	String		BUNDLE_VERSION_ATTRIBUTE					= "bundle-version";
 	String		FROM_DIRECTIVE								= "from:";
+	String		FROM_DIRECTIVE_PROJECT						= "project";
 
 	String		KEYSTORE_LOCATION_DIRECTIVE					= "keystore:";
 	String		KEYSTORE_PROVIDER_DIRECTIVE					= "provider:";
@@ -391,6 +416,11 @@ public interface Constants {
 	String		EEPROFILE_AUTO_ATTRIBUTE					= "auto";
 	String		NONE										= "none";
 
+	/*
+	 * -includeresource directives for duplicate handling strategy
+	 */
+	String		DUP_STRATEGY								= "onduplicate:";
+
 	Set<String>	directives									= Sets.of(SPLIT_PACKAGE_DIRECTIVE, NO_IMPORT_DIRECTIVE,
 		IMPORT_DIRECTIVE, RESOLUTION_DIRECTIVE, INCLUDE_DIRECTIVE, USES_DIRECTIVE, EXCLUDE_DIRECTIVE,
 		KEYSTORE_LOCATION_DIRECTIVE, KEYSTORE_PROVIDER_DIRECTIVE, KEYSTORE_PASSWORD_DIRECTIVE, SIGN_PASSWORD_DIRECTIVE,
@@ -398,7 +428,7 @@ public interface Constants {
 		EFFECTIVE_DIRECTIVE, FILTER_DIRECTIVE, FIXUPMESSAGES_RESTRICT_DIRECTIVE, FIXUPMESSAGES_REPLACE_DIRECTIVE,
 		FIXUPMESSAGES_IS_DIRECTIVE, BNDDRIVER_GRADLE, BNDDRIVER_GRADLE_NATIVE, BNDDRIVER_ANT, BNDDRIVER_ECLIPSE,
 		BNDDRIVER_MAVEN, BNDDRIVER_INTELLIJ, BNDDRIVER_SBT, BNDDRIVER_OSMORC, AUGMENT_CAPABILITY_DIRECTIVE,
-		AUGMENT_REQUIREMENT_DIRECTIVE);
+		AUGMENT_REQUIREMENT_DIRECTIVE, DUP_STRATEGY);
 
 	String		USES_USES									= "<<USES>>";
 	String		CURRENT_USES								= "@uses";
@@ -489,7 +519,27 @@ public interface Constants {
 	 */
 	String		DEFAULT_PREPROCESSS_MATCHERS				= "!*.(ico|jpg|jpeg|jif|jfif|jp2|jpx|j2k|j2c|fpx|png|gif|swf|doc|pdf|tiff|tif|raw|bmp|ppm|pgm|pbm|pnm|pfm|webp|zip|jar|gz|tar|tgz|exe|com|bin|mp[0-9]|mpeg|mov|):i, *";
 
-	/*
+	/**
+	 * Headers that if **all** are absent will trigger the -includepackage
+	 * `*;from:=project` (include all packages from the project's output.
+	 */
+	Set<String>	EXPAND_HEADERS								= Sets.of(Constants.RESOURCEONLY, Constants.INCLUDEPACKAGE,
+		Constants.PRIVATE_PACKAGE, Constants.PRIVATEPACKAGE, Constants.EXPORT_PACKAGE);
+
+	/**
+	 * Marker resource set by the ProjectBuilder to mark a JAR as the project
+	 * output's entry in the classpath. Used for the {@link #EXPAND_HEADERS}
+	 * processing.
+	 */
+	String		PROJECT_MARKER								= "META-INF/.project";
+
+	/**
+	 * Value for a *package instruction to include everything from the bin
+	 * directory
+	 */
+	String		ALL_FROM_PROJECT							= "*;" + FROM_DIRECTIVE + "=" + FROM_DIRECTIVE_PROJECT;
+
+	/**
 	 * Default properties as listed in defaults.bnd
 	 */
 
@@ -519,6 +569,7 @@ public interface Constants {
 	String		STATIC_ATTRIBUTE							= "static";
 	String		SUBSTITUTE_ATTRIBUTE						= "substitute";
 	String		MODULE_INFO_CLASS							= "module-info.class";
+	String		JPMS_MULTI_RELEASE							= "-jpms-multi-release";
 
 	/*
 	 * Service Loader Section
@@ -531,17 +582,79 @@ public interface Constants {
 	 * Launch constants that should be shared by launchers
 	 */
 	String		LAUNCH_TRACE								= "launch.trace";
+
+	/**
+	 * Specifies the default bundle start level but it has more meanings. If it
+	 * is 0, no start levels are handled. If is > 0, it manages the startlevels
+	 * of all installed bundles, also from previous installations are ensure to
+	 * have this start level if they do not appear in the set of runbundles. If
+	 * it less than 0, its negated value is the default start level but _only_
+	 * the bundles listed in the run bundles are managed. See -launcher
+	 * instruction.
+	 */
 	String		LAUNCH_STARTLEVEL_DEFAULT					= "launch.startlevel.default";
 	String		LAUNCH_RUNBUNDLES_ATTRS						= "launch.runbundles.attrs";
 	String		LAUNCH_ACTIVATORS							= "launch.activators";
 	String		LAUNCH_ACTIVATION_EAGER						= "launch.activation.eager";
 
 	/**
+	 * A list of headers that use merged properties
+	 */
+	Set<String>	MERGED_HEADERS								= Set.of(																																								//
+		AUGMENT,																																																					//
+		BUILDERIGNORE,																																																				//
+		BUILDREPO,																																																					//
+		BUILDPATH,																																																					//
+		CONDITIONAL_PACKAGE,																																																		//
+		CONNECTION_SETTINGS,																																																		//
+		DEFINE_CONTRACT,																																																			//
+		DEFAULT_PROP_SRC_DIR,																																																		//
+		DEPENDSON,																																																					//
+		DONOTCOPY,																																																					//
+		DSANNOTATIONS_OPTIONS,																																																		//
+		EXPORT_PACKAGE,																																																				//
+		EXTENSION,																																																					//
+		FIXUPMESSAGES,																																																				//
+		GESTALT,																																																					//
+		IMPORT_PACKAGE,																																																				//
+		INCLUDERESOURCE,																																																			//
+		MAKE,																																																						//
+		MAVEN_DEPENDENCIES,																																																			//
+		PLUGIN,																																																						//
+		PLUGINPATH,																																																					//
+		PREPROCESSMATCHERS,																																																			//
+		PRIVATE_PACKAGE,																																																			//
+		PROVIDE_CAPABILITY,																																																			//
+		RELEASEREPO,																																																				//
+		REMOVEHEADERS,																																																				//
+		REQUIRE_CAPABILITY,																																																			//
+		RESOLVE_REJECT,																																																				//
+		RUNBLACKLIST,																																																				//
+		RUNBUNDLES,																																																					//
+		RUNBUNDLES_DECORATOR,																																																		//
+		RUNPATH,																																																					//
+		RUNPROGRAMARGS,																																																				//
+		RUNPROPERTIES,																																																				//
+		RUNPROVIDEDCAPABILITIES,																																																	//
+		RUNREPOS,																																																					//
+		RUNREQUIRES,																																																				//
+		RUNSYSTEMCAPABILITIES,																																																		//
+		RUNSYSTEMPACKAGES,																																																			//
+		RUNVM,																																																						//
+		SOURCEPATH,																																																					//
+		STANDALONE,																																																					//
+		SYSTEMPROPERTIES,																																																			//
+		TESTPACKAGES,																																																				//
+		TESTPATH,																																																					//
+		WORKINGSET,																																																					//
+		"-pomaugment");
+
+	/**
 	 * Any attributes that should be removed from the attributes before
 	 * printing.
 	 */
 	Set<String>	BND_USE_ATTRIBUTES							= Sets.of(
-		//@formatter:off
+	//@formatter:off
 		FROM_DIRECTIVE,
 		NO_IMPORT_DIRECTIVE,
 		PROVIDE_DIRECTIVE,
@@ -554,7 +667,5 @@ public interface Constants {
 	/*
 	 * Deprecated Section
 	 */
-	@Deprecated
-	String		METATYPE									= "-metatype";
 
 }

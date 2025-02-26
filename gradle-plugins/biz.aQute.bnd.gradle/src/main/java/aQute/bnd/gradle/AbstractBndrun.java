@@ -7,15 +7,16 @@ import static aQute.bnd.gradle.BndUtils.sourceSets;
 import static aQute.bnd.gradle.BndUtils.unwrap;
 import static aQute.bnd.gradle.BndUtils.unwrapFile;
 import static aQute.bnd.gradle.BndUtils.unwrapOptional;
-import static org.gradle.api.tasks.PathSensitivity.NONE;
 import static org.gradle.api.tasks.PathSensitivity.RELATIVE;
 
 import java.io.File;
 import java.util.Collections;
+import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Properties;
+import java.util.stream.Collectors;
 
 import aQute.bnd.build.Project;
 import aQute.bnd.build.Workspace;
@@ -35,14 +36,15 @@ import org.gradle.api.artifacts.Dependency;
 import org.gradle.api.file.ConfigurableFileCollection;
 import org.gradle.api.file.DirectoryProperty;
 import org.gradle.api.file.FileCollection;
+import org.gradle.api.file.FileSystemLocation;
 import org.gradle.api.file.RegularFileProperty;
 import org.gradle.api.model.ObjectFactory;
 import org.gradle.api.provider.MapProperty;
 import org.gradle.api.provider.Property;
 import org.gradle.api.provider.Provider;
+import org.gradle.api.tasks.Classpath;
 import org.gradle.api.tasks.Input;
 import org.gradle.api.tasks.InputFile;
-import org.gradle.api.tasks.InputFiles;
 import org.gradle.api.tasks.Internal;
 import org.gradle.api.tasks.PathSensitive;
 import org.gradle.api.tasks.SourceSet;
@@ -109,10 +111,26 @@ public abstract class AbstractBndrun extends DefaultTask {
 	 * @return The bundles to be added to a FileSetRepository for non-Bnd
 	 *         Workspace builds.
 	 */
-	@InputFiles
-	@PathSensitive(NONE)
+	@Internal
 	public ConfigurableFileCollection getBundles() {
 		return bundles;
+	}
+
+	/**
+	 * Wrapper of the {@link #getBundles()} method to allow <code>@Classpath</code> normalization and sorting.
+	 * <p>
+	 * This method is only relevant for Gradle task input fingerprinting and should not be used.
+	 *
+	 * @return The sorted bundles.
+	 */
+	@Classpath
+	Provider<List<File>> getBundlesSorted() {
+		return getBundles().getElements().map(
+			c -> c.stream()
+				.map(FileSystemLocation::getAsFile)
+				.sorted(IO.fileComparator(File::getAbsolutePath))
+				.collect(Collectors.toList())
+		);
 	}
 
 	/**
@@ -226,7 +244,6 @@ public abstract class AbstractBndrun extends DefaultTask {
 	/**
 	 * Create a Bndrun task.
 	 */
-	@SuppressWarnings("deprecation")
 	public AbstractBndrun() {
 		super();
 		org.gradle.api.Project project = getProject();
@@ -272,9 +289,6 @@ public abstract class AbstractBndrun extends DefaultTask {
 		} else {
 			bundles(mainSourceSet.getRuntimeClasspath());
 			bundles(artifacts);
-			// We add this in case someone actually looks for this convention
-			getConvention().getPlugins()
-				.put("bundles", new FileSetRepositoryConvention(this));
 			properties.convention(Maps.of("project", "__convention__"));
 		}
 	}
@@ -306,7 +320,7 @@ public abstract class AbstractBndrun extends DefaultTask {
 	}
 
 	/**
-	 * Setup the Run object and call worker on it.
+	 * Set up the Run object and call worker on it.
 	 *
 	 * @throws Exception If the run action has an exception.
 	 */
@@ -325,7 +339,7 @@ public abstract class AbstractBndrun extends DefaultTask {
 		try (biz.aQute.resolve.Bndrun run = createBndrun(workspace.orElse(null), bndrunFile)) {
 			Workspace runWorkspace = run.getWorkspace();
 			IO.mkdirs(workingDirFile);
-			if (!workspace.isPresent()) {
+			if (workspace.isEmpty()) {
 				Properties gradleProperties = new BeanProperties(runWorkspace.getProperties());
 				gradleProperties.putAll(unwrap(getProperties()));
 				gradleProperties.computeIfPresent("project", (k, v) -> "__convention__".equals(v) ? getProject() : v);
@@ -341,7 +355,7 @@ public abstract class AbstractBndrun extends DefaultTask {
 				IO.mkdirs(cnf);
 				runWorkspace.setBuildDir(cnf);
 				runWorkspace.setOffline(unwrap(getOffline()).booleanValue());
-				if (!workspace.isPresent()) {
+				if (workspace.isEmpty()) {
 					FileSetRepository fileSetRepository = new FileSetRepository(getName(), getBundles().getFiles());
 					runWorkspace.addBasicPlugin(fileSetRepository);
 					for (RepositoryPlugin repo : runWorkspace.getRepositories()) {
@@ -367,7 +381,7 @@ public abstract class AbstractBndrun extends DefaultTask {
 	 * @param workspace The workspace for the RUN.
 	 * @param bndrunFile The bndrun file for the RUN.
 	 * @return The RUN object.
-	 * @throws Exception If the create action has an exception.
+	 * @throws Exception If the creation action has an exception.
 	 */
 	protected biz.aQute.resolve.Bndrun createBndrun(Workspace workspace, File bndrunFile) throws Exception {
 		return biz.aQute.resolve.Bndrun.createBndrun(workspace, bndrunFile);

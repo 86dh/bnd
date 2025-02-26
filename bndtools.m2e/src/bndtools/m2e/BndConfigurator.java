@@ -254,20 +254,20 @@ public class BndConfigurator extends ServiceAwareM2EConfigurator {
 	private boolean isOurArtifact(String lastSegment, IMavenProjectFacade projectFacade) {
 		ArtifactKey artifactKey = projectFacade.getArtifactKey();
 		String artifact = null;
-		if (artifactKey.getClassifier() == null) {
-			artifact = String.format(ARTIFACT_PATTERN, artifactKey.getArtifactId(), artifactKey.getVersion(),
+		if (artifactKey.classifier() == null) {
+			artifact = String.format(ARTIFACT_PATTERN, artifactKey.artifactId(), artifactKey.version(),
 				projectFacade.getMavenProject()
 					.getPackaging());
 		} else {
-			artifact = String.format(CLASSIFIER_ARTIFACT_PATTERN, artifactKey.getArtifactId(), artifactKey.getVersion(),
-				artifactKey.getClassifier(), projectFacade.getMavenProject()
+			artifact = String.format(CLASSIFIER_ARTIFACT_PATTERN, artifactKey.artifactId(), artifactKey.version(),
+				artifactKey.classifier(), projectFacade.getMavenProject()
 					.getPackaging());
 		}
 		if (artifact.equals(lastSegment)) {
 			return true;
 		}
-		artifact = String.format(CLASSIFIER_ARTIFACT_PATTERN, artifactKey.getArtifactId(), artifactKey.getVersion(),
-			"tests", projectFacade.getMavenProject()
+		artifact = String.format(CLASSIFIER_ARTIFACT_PATTERN, artifactKey.artifactId(), artifactKey.version(), "tests",
+			projectFacade.getMavenProject()
 				.getPackaging());
 		return artifact.equals(lastSegment);
 	}
@@ -304,6 +304,7 @@ public class BndConfigurator extends ServiceAwareM2EConfigurator {
 		projectRegistry.execute(projectFacade, (context1, monitor1) -> {
 			SubMonitor progress = SubMonitor.convert(monitor1);
 			MavenProject mavenProject = getMavenProject(projectFacade, progress.split(1));
+			mavenProject.getArtifact().setFile(null);
 
 			List<MojoExecution> mojoExecutions = null;
 			if (!isTest) {
@@ -320,7 +321,7 @@ public class BndConfigurator extends ServiceAwareM2EConfigurator {
 			}
 
 			for (MojoExecution mojoExecution : mojoExecutions) {
-				maven.execute(mavenProject, mojoExecution, progress.split(1));
+				context1.execute(mavenProject, mojoExecution, progress.split(1));
 			}
 
 			// We can now decorate based on the build we just did.

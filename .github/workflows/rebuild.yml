@@ -1,5 +1,6 @@
 name: 'Rebuild'
 
+
 on:
   push:
     branches-ignore:
@@ -24,6 +25,11 @@ env:
     -Dhttp.keepAlive=false
     -Dmaven.wagon.http.pool=false
     -Dmaven.wagon.http.retryHandler.count=3
+    -Daether.connector.http.retryHandler.count=5
+    -Daether.connector.http.reuseConnections=false
+    -Daether.connector.http.connectionMaxTtl=25
+    -Daether.connector.connectTimeout=120000
+  BNDTOOLS_CORE_TEST_NOJUNITOSGI: true # This test is very flaky on CI
 
 defaults:
   run:
@@ -47,25 +53,27 @@ jobs:
       dist-bundles: Dist_Bundles_JDK${{ matrix.java }}_${{ matrix.os }}
     steps:
     - name: Harden Runner
-      uses: step-security/harden-runner@ebacdc22ef6c2cfb85ee5ded8f2e640f4c776dd5
+      uses: step-security/harden-runner@4d991eb9b905ef189e4c376166672c3f2f230481
       with:
         egress-policy: audit # TODO: change to 'egress-policy: block' after couple of runs
 
     - name: Git Checkout
-      uses: actions/checkout@93ea575cb5d8a053eaa0ac8fa3b40d7e05a33cc8
+      uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
     - name: Set up Java ${{ matrix.java }}
-      uses: actions/setup-java@de1bb2b0c5634f0fc4438d7aa9944e68f9bf86cc
+      uses: actions/setup-java@3a4f6e1af504cf6a31855fa899c6aa5355ba6c12
       with:
         distribution: 'temurin'
-        java-version: ${{ matrix.java }}
+        java-version: |
+          8
+          ${{ matrix.java }}
     - name: Set up Gradle
-      uses: gradle/gradle-build-action@3fbe033aaae657f011f88f29be9e65ed26bd29ef
+      uses: gradle/actions/setup-gradle@94baf225fe0a508e581a564467443d0e2379123b
     - name: Build
       id: build
       run: |
         ./.github/scripts/rebuild-build.sh
     - name: Upload dist/bundles
-      uses: actions/upload-artifact@83fd05a356d7e2593de66fc9913b3002723633cb
+      uses: actions/upload-artifact@b4b15b8c7c6ac21ea08fcf65892d2ee8f75cf882
       with:
         name: Dist_Bundles_JDK${{ matrix.java }}_${{ matrix.os }}
         if-no-files-found: error
@@ -79,29 +87,31 @@ jobs:
         os:
         - 'ubuntu-latest'
         java:
-        - '8'
-        - '18'
+        - '17'
+        - '20'
         runner:
-        - 'xvfb-run --auto-servernum {0}'
+        - '{0}' # 'xvfb-run --auto-servernum {0}'
     name: Rebuild JDK${{ matrix.java }} ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
     steps:
     - name: Harden Runner
-      uses: step-security/harden-runner@ebacdc22ef6c2cfb85ee5ded8f2e640f4c776dd5
+      uses: step-security/harden-runner@4d991eb9b905ef189e4c376166672c3f2f230481
       with:
         egress-policy: audit # TODO: change to 'egress-policy: block' after couple of runs
 
     - name: Git Checkout
-      uses: actions/checkout@93ea575cb5d8a053eaa0ac8fa3b40d7e05a33cc8
-    - name: Set up Java
-      uses: actions/setup-java@de1bb2b0c5634f0fc4438d7aa9944e68f9bf86cc
+      uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+    - name: Set up Java 8 + ${{ matrix.java }}
+      uses: actions/setup-java@3a4f6e1af504cf6a31855fa899c6aa5355ba6c12
       with:
         distribution: 'temurin'
-        java-version: ${{ matrix.java }}
+        java-version: |
+          8
+          ${{ matrix.java }}
     - name: Set up Gradle
-      uses: gradle/gradle-build-action@3fbe033aaae657f011f88f29be9e65ed26bd29ef
+      uses: gradle/actions/setup-gradle@94baf225fe0a508e581a564467443d0e2379123b
     - name: Download dist/bundles
-      uses: actions/download-artifact@9782bd6a9848b53b110e712e20e42d89988822b7
+      uses: actions/download-artifact@87c55149d96e628cc2ef7e6fc2aab372015aec85
       with:
         name: ${{ needs.build.outputs.dist-bundles }}
         path: dist/bundles
@@ -111,7 +121,7 @@ jobs:
         ${{ format(matrix.runner, './.github/scripts/rebuild-test.sh') }}
     - name: Upload Test Reports
       if: ${{ always() && ((steps.build.outcome == 'success') || (steps.build.outcome == 'failure')) }}
-      uses: actions/upload-artifact@83fd05a356d7e2593de66fc9913b3002723633cb
+      uses: actions/upload-artifact@b4b15b8c7c6ac21ea08fcf65892d2ee8f75cf882
       with:
         name: Rebuild_JDK${{ matrix.java }}_${{ matrix.os }}-test-reports
         path: |

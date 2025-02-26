@@ -37,7 +37,6 @@ import org.eclipse.core.runtime.SubMonitor;
 import org.eclipse.core.runtime.jobs.Job;
 import org.eclipse.jdt.core.IJavaModelMarker;
 import org.eclipse.m2e.core.embedder.ArtifactKey;
-import org.eclipse.m2e.core.embedder.IMaven;
 import org.eclipse.m2e.core.embedder.IMavenExecutionContext;
 import org.eclipse.m2e.core.lifecyclemapping.model.IPluginExecutionMetadata;
 import org.eclipse.m2e.core.project.IMavenProjectFacade;
@@ -111,11 +110,11 @@ public class IndexConfigurator extends ServiceAwareM2EConfigurator implements IR
 			List<String> versions = new ArrayList<>();
 			for (IMavenProjectFacade facade : registry.getProjects()) {
 				ArtifactKey key = facade.getArtifactKey();
-				if (key.getArtifactId()
+				if (key.artifactId()
 					.equals(artifact.getArtifactId())
-					&& key.getGroupId()
+					&& key.groupId()
 						.equals(artifact.getGroupId())) {
-					versions.add(key.getVersion());
+					versions.add(key.version());
 				}
 			}
 			return versions;
@@ -136,13 +135,11 @@ public class IndexConfigurator extends ServiceAwareM2EConfigurator implements IR
 
 		private boolean								noMoreEvents;
 
-		private final IMaven						maven;
 		private final IMavenProjectRegistry			registry;
 
-		public RebuildIndexCheck(IMaven maven, IMavenProjectRegistry registry, String name, IResourceChangeEvent event,
+		public RebuildIndexCheck(IMavenProjectRegistry registry, String name, IResourceChangeEvent event,
 			IMavenProjectFacade facade) {
 			super(name);
-			this.maven = maven;
 			this.registry = registry;
 			this.events.add(event);
 			this.facade = facade;
@@ -208,7 +205,8 @@ public class IndexConfigurator extends ServiceAwareM2EConfigurator implements IR
 							list.size());
 						list.forEach(me -> {
 							try {
-								maven.execute(getMavenProject(facade, indexMonitor), me, indexMonitor);
+								facade.createExecutionContext()
+									.execute(getMavenProject(facade, indexMonitor), me, indexMonitor);
 							} catch (CoreException e) {
 								logger.logError(
 									"An error occurred attempting to build the index for project " + facade.getProject()
@@ -325,7 +323,7 @@ public class IndexConfigurator extends ServiceAwareM2EConfigurator implements IR
 					final MavenProject mavenProject = getMavenProject(projectFacade, progress.split(1));
 
 					context.execute((context1, monitor1) -> {
-						maven.execute(mavenProject, getMojoExecution(), monitor1);
+						context1.execute(mavenProject, getMojoExecution(), monitor1);
 
 						IPath buildDirPath = Path.fromOSString(mavenProject.getBuild()
 							.getDirectory());
@@ -380,8 +378,8 @@ public class IndexConfigurator extends ServiceAwareM2EConfigurator implements IR
 
 			for (MojoExecutionKey key : facade.getMojoExecutionMapping()
 				.keySet()) {
-				if (INDEXER_PLUGIN_GROUP_ID.equals(key.getGroupId())
-					&& INDEXER_PLUGIN_ARTIFACT_ID.equals(key.getArtifactId())) {
+				if (INDEXER_PLUGIN_GROUP_ID.equals(key.groupId())
+					&& INDEXER_PLUGIN_ARTIFACT_ID.equals(key.artifactId())) {
 
 					// This is an indexer project - if any referenced projects,
 					// or this project, were part of the change then we *may*
@@ -395,7 +393,7 @@ public class IndexConfigurator extends ServiceAwareM2EConfigurator implements IR
 								.findMember(projects[i].getFullPath()) != null;
 						}
 						if (doFullCheck) {
-							RebuildIndexCheck job = new RebuildIndexCheck(getMaven(), getRegistry(),
+							RebuildIndexCheck job = new RebuildIndexCheck(getRegistry(),
 								"Checking index project " + currentProject.getName() + " for rebuild", event, facade);
 
 							// If someone else beat us to the punch then don't

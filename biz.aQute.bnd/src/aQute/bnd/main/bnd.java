@@ -159,7 +159,7 @@ public class bnd extends Processor {
 	private final static Pattern				ASSIGNMENT				= Pattern.compile(							//
 		"([^=]+) (= ( ?: (\"|'|) (.+) \\3 )? ) ?", Pattern.COMMENTS);
 	Settings									settings				= new Settings(
-		Home.getUserHomeBnd() + "/settings.json");
+		Home.getUserHomeBnd("settings.json"));
 	final PrintStream							err						= System.err;
 	final public PrintStream					out						= System.out;
 	Justif										justif					= new Justif(80, 40, 42, 70);
@@ -2822,6 +2822,10 @@ public class bnd extends Processor {
 					});
 				}
 				Manifest m = in.getManifest();
+				if (m == null) {
+					warning("no manifest in %s", file);
+					continue;
+				}
 				for (Object header : m.getMainAttributes()
 					.keySet()) {
 					Attributes.Name name = (Name) header;
@@ -2848,6 +2852,8 @@ public class bnd extends Processor {
 						}
 					}
 				}
+			} catch (Exception e) {
+				error("faild to load file %s : %s", file, e);
 			}
 		}
 	}

@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+	<modelVersion>4.0.0</modelVersion>
+
+	<groupId>biz.aQute.bnd</groupId>
+	<artifactId>maven-plugins</artifactId>
+	<version>1.0.0</version>
+	<description>Reactor to build the Bnd Maven plugins.</description>
+	<name>Bnd Maven Plugins Reactor</name>
+	<packaging>pom</packaging>
+
+	<properties>
+		<project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+		<maven.install.skip>true</maven.install.skip>
+		<maven.deploy.skip>true</maven.deploy.skip>
+	</properties>
+
+	<modules>
+		<module>bnd-plugin-parent</module>
+		<module>bnd-maven-plugin</module>
+		<module>bnd-indexer-maven-plugin</module>
+		<module>bnd-baseline-maven-plugin</module>
+		<module>bnd-resolver-maven-plugin</module>
+		<module>bnd-export-maven-plugin</module>
+		<module>bnd-testing-maven-plugin</module>
+		<module>bnd-run-maven-plugin</module>
+		<module>bnd-reporter-maven-plugin</module>
+		<module>bnd-generate-maven-plugin</module>
+	</modules>
+</project>

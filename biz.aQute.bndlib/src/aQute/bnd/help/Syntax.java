@@ -269,12 +269,12 @@ public class Syntax implements Constants {
 
 			), version, bundle_symbolic_name, bundle_version),
 
-		new Syntax(LIBRARY, "The " + LIBRARY
-			+ " instruction includes a library. A library is included in a bundle in a repository. "
-			+ "It is identified by a capability, a bundle can contain multiple libraries. When used in a "
-			+ "workspace, it will include the `workspace.bnd` file from the library by default. For a project, "
-			+ "this is `project.bnd`. The `include` attribute can identify a file in the library. Libraries are "
-			+ "versioned independently from the bundle. The library can contain additional files, also binary.",
+		new Syntax(LIBRARY,
+			"The " + LIBRARY + " instruction includes a library. A library is included in a bundle in a repository. "
+				+ "It is identified by a capability, a bundle can contain multiple libraries. When used in a "
+				+ "workspace, it will include the `workspace.bnd` file from the library by default. For a project, "
+				+ "this is `project.bnd`. The `include` attribute can identify a file in the library. Libraries are "
+				+ "versioned independently from the bundle. The library can contain additional files, also binary.",
 			LIBRARY + ": foo;version=1.2.3", null, null),
 		new Syntax(REQUIRE_BUNDLE,
 			"The " + REQUIRE_BUNDLE + " header specifies the required exports from another bundle.",
@@ -506,9 +506,9 @@ public class Syntax implements Constants {
 			"Include resources from the file system. You can specify a directory, or file. All files are copied to the root, unless a destination directory is indicated.",
 			INCLUDERESOURCE + ": lib/=jar/, {preprocess.txt}, license.txt;literal:='ASL 2.0, -doesnotexit.txt'", null,
 			null),
-		new Syntax(INCLUDE_RESOURCE,
+		new Syntax(INCLUDERESOURCE,
 			"Include resources from the file system. You can specify a directory, or file. All files are copied to the root, unless a destination directory is indicated.",
-			INCLUDE_RESOURCE + ": lib/=jar/, {preprocess.txt}, 'literal';literal;=true,", null, null),
+			INCLUDERESOURCE + ": lib/=jar/, {preprocess.txt}, 'literal';literal;=true,", null, null),
 		new Syntax(INIT, "Executes macros while initializing the project for building", INIT + ": ${my_macro} ", null,
 			null),
 		new Syntax(JAVAAGENT, "Specify if classpath jars with Premain-Class headers are to be used as java agents.",
@@ -703,7 +703,7 @@ public class Syntax implements Constants {
 			"When the bundle version’s qualifier equals 'SNAPSHOT' or ends with '-SNAPSHOT', the STRING value of the -snapshot instruction is substituted for 'SNAPSHOT'.",
 			SNAPSHOT + "=${tstamp}", null, null),
 		new Syntax(STANDALONE,
-			"Used in bndrun files. Disconnects the bndrun file from the workspace and defines its own Capabilities repositories.",
+			"Used in bndrun files. Disconnects the bndrun file from the workspace and defines its own Capabilities repositories. This is a merged instruction although be careful that the exact header must be set to treat a bndrun file as standalone.",
 			STANDALONE + "=index.html;name=..., ...", null, null),
 		new Syntax(STRICT, "If set to true, then extra verification is done.", STRICT + "=true", "true,false",
 			Verifier.TRUEORFALSEPATTERN),
@@ -736,7 +736,11 @@ public class Syntax implements Constants {
 			WORKINGSET + "=Implementations, Drivers", null, null),
 		new Syntax("-x-overwritestrategy",
 			"On windows we sometimes cannot delete a file because someone holds a lock in our or another process. So if we set the -overwritestrategy flag we use an avoiding strategy.",
-			"-x-overwritestrategy=gc", "(classic|delay|gc|windows-only-disposable-names|disposable-names)", null)
+			"-x-overwritestrategy=gc", "(classic|delay|gc|windows-only-disposable-names|disposable-names)", null),
+		new Syntax(METAINF_SERVICES, "Controls how META-INF/services files are processed.", METAINF_SERVICES + ": auto",
+			"(" + METAINF_SERVICES_STRATEGY_ANNOTATION + "|" + METAINF_SERVICES_STRATEGY_AUTO + "|"
+				+ METAINF_SERVICES_STRATEGY_NONE + ")",
+			Pattern.compile("auto|annotation|none"))
 	};
 
 	final static Map<Class<?>, Pattern>		BASE_PATTERNS			= Maps.ofEntries(

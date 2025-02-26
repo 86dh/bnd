@@ -1,6 +1,10 @@
 package aQute.bnd.osgi.resource;
 
 import static aQute.bnd.exceptions.FunctionWithException.asFunction;
+import static aQute.lib.comparators.Comparators.compare;
+import static aQute.lib.comparators.Comparators.compareMapsByKeys;
+import static aQute.lib.comparators.Comparators.comparePresent;
+import static aQute.lib.comparators.Comparators.isFinal;
 import static java.lang.invoke.MethodHandles.publicLookup;
 import static java.util.stream.Collectors.groupingBy;
 import static java.util.stream.Collectors.toCollection;
@@ -19,6 +23,9 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Comparator;
 import java.util.HashMap;
+import java.util.HashSet;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -31,6 +38,7 @@ import java.util.function.Supplier;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collector;
+import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 import org.osgi.framework.Filter;
@@ -60,103 +68,40 @@ import aQute.bnd.osgi.BundleId;
 import aQute.bnd.osgi.Constants;
 import aQute.bnd.osgi.Macro;
 import aQute.bnd.osgi.Processor;
+import aQute.bnd.osgi.resource.FilterParser.Expression;
+import aQute.bnd.osgi.resource.FilterParser.PackageExpression;
 import aQute.bnd.service.library.LibraryNamespace;
 import aQute.bnd.stream.MapStream;
 import aQute.bnd.unmodifiable.Lists;
 import aQute.bnd.unmodifiable.Maps;
 import aQute.bnd.unmodifiable.Sets;
 import aQute.bnd.version.Version;
+import aQute.lib.comparators.Comparators;
 import aQute.lib.converter.Converter;
 import aQute.lib.strings.Strings;
 
-public class ResourceUtils {
+public abstract class ResourceUtils {
 
-	public static final Comparator<Requirement>			REQUIREMENT_COMPARATOR		=																	//
-
-		(Requirement o1, Requirement o2) -> {
-			if (o1 == o2)
-				return 0;
-
-			if (o1 == null)
-				return -1;
-
-			if (o2 == null)
-				return 1;
-
-			if (o1.equals(o2))
-				return 0;
-
-			String ns1 = o1.getNamespace();
-			String ns2 = o2.getNamespace();
-			int compareTo = ns1.compareTo(ns2);
-			if (compareTo != 0)
-				return compareTo;
-
-			String f1 = o1.getDirectives()
-				.get("filter");
-			String f2 = o2.getDirectives()
-				.get("filter");
-			return f1.compareTo(f2);
-		};
-
-	/**
-	 * A comparator that compares the identity versions
-	 */
-	public static final Comparator<? super Resource>		IDENTITY_VERSION_COMPARATOR	=								//
+	public static final Comparator<Requirement>			REQUIREMENT_COMPARATOR		= ResourceUtils::compareTo;
+	public static final Comparator<? super Resource>	IDENTITY_VERSION_COMPARATOR	=								//
 		(o1, o2) -> {
-			if (o1 == o2)
-				return 0;
 
-			if (o1 == null)
-				return -1;
-
-			if (o2 == null)
-				return 1;
-
-			if (o1.equals(o2))
-				return 0;
+			int n = comparePresent(o1, o2);
+			if (isFinal(n))
+				return n;
 
 			String v1 = getIdentityVersion(o1);
 			String v2 = getIdentityVersion(o2);
-
-			if (v1 == v2)
-				return 0;
-
-			if (v1 == null)
-				return -1;
-
-			if (v2 == null)
-				return 1;
-
-			return new Version(v1).compareTo(new Version(v2));
+			return n = compare(v1, v2);
 		};
 
-	private static final Comparator<? super Resource>		RESOURCE_COMPARATOR			=								//
-		(o1, o2) -> {
-			if (o1 == o2)
-				return 0;
+	private static final Comparator<? super Resource>	RESOURCE_COMPARATOR			= ResourceUtils::compareTo;
+	public static final Resource						DUMMY_RESOURCE				= new ResourceBuilder().build();
+	public static final String							WORKSPACE_NAMESPACE			= "bnd.workspace.project";
 
-			if (o1 == null)
-				return -1;
-			if (o2 == null)
-				return 1;
-
-			if (o1.equals(o2))
-				return 0;
-
-			if (o1 instanceof ResourceImpl && o2 instanceof ResourceImpl) {
-				return ((ResourceImpl) o1).compareTo(o2);
-			}
-
-			return o1.toString()
-				.compareTo(o2.toString());
-		};
-
-	public static final Resource							DUMMY_RESOURCE				= new ResourceBuilder().build();
-	public static final String								WORKSPACE_NAMESPACE			= "bnd.workspace.project";
-
-	private static final Converter							cnv							= new Converter()
+	private static final Converter						cnv							= new Converter()
 		.hook(Version.class, (dest, o) -> toVersion(o));
+
 
 	public interface IdentityCapability extends Capability {
 		public enum Type {
@@ -297,18 +242,17 @@ public class ResourceUtils {
 	}
 
 	public static Version toVersion(Object v) {
-		if (v instanceof Version)
-			return (Version) v;
+		if (v instanceof Version version)
+			return version;
 
-		if (v instanceof org.osgi.framework.Version) {
-			org.osgi.framework.Version o = (org.osgi.framework.Version) v;
+		if (v instanceof org.osgi.framework.Version o) {
 			String q = o.getQualifier();
 			return q.isEmpty() ? new Version(o.getMajor(), o.getMinor(), o.getMicro())
 				: new Version(o.getMajor(), o.getMinor(), o.getMicro(), q);
 		}
 
-		if ((v instanceof String) && Version.isVersion((String) v)) {
-			return Version.valueOf((String) v);
+		if ((v instanceof String string) && Version.isVersion(string)) {
+			return Version.valueOf(string);
 		}
 
 		return null;
@@ -329,26 +273,26 @@ public class ResourceUtils {
 		if (uriObj == null)
 			return null;
 
-		if (uriObj instanceof URI)
-			return (URI) uriObj;
+		if (uriObj instanceof URI uri)
+			return uri;
 
 		try {
-			if (uriObj instanceof URL)
-				return ((URL) uriObj).toURI();
+			if (uriObj instanceof URL url)
+				return url.toURI();
 
-			if (uriObj instanceof String) {
+			if (uriObj instanceof String string) {
 				try {
-					URL url = new URL((String) uriObj);
+					URL url = new URL(string);
 					return url.toURI();
 				} catch (MalformedURLException mfue) {
 					// Ignore
 				}
 
-				File f = new File((String) uriObj);
+				File f = new File(string);
 				if (f.isFile()) {
 					return f.toURI();
 				}
-				return new URI((String) uriObj);
+				return new URI(string);
 			}
 
 		} catch (URISyntaxException e) {
@@ -359,32 +303,19 @@ public class ResourceUtils {
 	}
 
 	public static String getVersionAttributeForNamespace(String namespace) {
-		switch (namespace) {
-			case LibraryNamespace.NAMESPACE :
-			case "bnd.info" :
-				return "version";
-
-			case IdentityNamespace.IDENTITY_NAMESPACE :
-				return IdentityNamespace.CAPABILITY_VERSION_ATTRIBUTE;
-			case BundleNamespace.BUNDLE_NAMESPACE :
-			case HostNamespace.HOST_NAMESPACE :
-				return AbstractWiringNamespace.CAPABILITY_BUNDLE_VERSION_ATTRIBUTE;
-			case PackageNamespace.PACKAGE_NAMESPACE :
-				return PackageNamespace.CAPABILITY_VERSION_ATTRIBUTE;
-			case ExecutionEnvironmentNamespace.EXECUTION_ENVIRONMENT_NAMESPACE :
-				return ExecutionEnvironmentNamespace.CAPABILITY_VERSION_ATTRIBUTE;
-			case NativeNamespace.NATIVE_NAMESPACE :
-				return NativeNamespace.CAPABILITY_OSVERSION_ATTRIBUTE;
-			case ExtenderNamespace.EXTENDER_NAMESPACE :
-				return ExtenderNamespace.CAPABILITY_VERSION_ATTRIBUTE;
-			case ContractNamespace.CONTRACT_NAMESPACE :
-				return ContractNamespace.CAPABILITY_VERSION_ATTRIBUTE;
-			case ImplementationNamespace.IMPLEMENTATION_NAMESPACE :
-				return ImplementationNamespace.CAPABILITY_VERSION_ATTRIBUTE;
-			case ServiceNamespace.SERVICE_NAMESPACE :
-			default :
-				return "version";
-		}
+		return switch (namespace) {
+			case LibraryNamespace.NAMESPACE, "bnd.info" -> "version";
+			case IdentityNamespace.IDENTITY_NAMESPACE -> IdentityNamespace.CAPABILITY_VERSION_ATTRIBUTE;
+			case BundleNamespace.BUNDLE_NAMESPACE, HostNamespace.HOST_NAMESPACE -> AbstractWiringNamespace.CAPABILITY_BUNDLE_VERSION_ATTRIBUTE;
+			case PackageNamespace.PACKAGE_NAMESPACE -> PackageNamespace.CAPABILITY_VERSION_ATTRIBUTE;
+			case ExecutionEnvironmentNamespace.EXECUTION_ENVIRONMENT_NAMESPACE -> ExecutionEnvironmentNamespace.CAPABILITY_VERSION_ATTRIBUTE;
+			case NativeNamespace.NATIVE_NAMESPACE -> NativeNamespace.CAPABILITY_OSVERSION_ATTRIBUTE;
+			case ExtenderNamespace.EXTENDER_NAMESPACE -> ExtenderNamespace.CAPABILITY_VERSION_ATTRIBUTE;
+			case ContractNamespace.CONTRACT_NAMESPACE -> ContractNamespace.CAPABILITY_VERSION_ATTRIBUTE;
+			case ImplementationNamespace.IMPLEMENTATION_NAMESPACE -> ImplementationNamespace.CAPABILITY_VERSION_ATTRIBUTE;
+			case ServiceNamespace.SERVICE_NAMESPACE -> "version";
+			default -> "version";
+		};
 	}
 
 	@SuppressWarnings("unchecked")
@@ -602,8 +533,8 @@ public class ResourceUtils {
 	}
 
 	public static Map<URI, String> getLocations(Resource resource) {
-		Map<URI, Object> locations = MapStream.of(
-			capabilityStream(resource, ContentNamespace.CONTENT_NAMESPACE).map(asFunction(c -> {
+		Map<URI, Object> locations = MapStream
+			.of(capabilityStream(resource, ContentNamespace.CONTENT_NAMESPACE).map(asFunction(c -> {
 				Map<String, Object> attributes = c.getAttributes();
 				Object u = attributes.get(ContentNamespace.CAPABILITY_URL_ATTRIBUTE);
 				if (u == null) {
@@ -634,10 +565,11 @@ public class ResourceUtils {
 			// We can't use MapStream.toMap since we must handle null
 			// osgi_content values.
 			// .collect(MapStream.toMap());
-			.collect(Collector.of(HashMap<URI, Object>::new, (map, entry) -> map.put(entry.getKey(), entry.getValue()), (m1, m2) -> {
-				m1.putAll(m2);
-				return m1;
-			}));
+			.collect(Collector.of(HashMap<URI, Object>::new, (map, entry) -> map.put(entry.getKey(), entry.getValue()),
+				(m1, m2) -> {
+					m1.putAll(m2);
+					return m1;
+				}));
 		@SuppressWarnings({
 			"rawtypes", "unchecked"
 		})
@@ -739,7 +671,7 @@ public class ResourceUtils {
 	@SuppressWarnings({
 		"rawtypes", "unchecked"
 	})
-	private static final Comparator<Comparable> nullsFirst = Comparator.nullsFirst(Comparator.naturalOrder());
+	public static final Comparator<Comparable> nullsFirst = Comparator.nullsFirst(Comparator.naturalOrder());
 
 	/**
 	 * Compare two resources. This can be used to act as a comparator. The
@@ -751,23 +683,109 @@ public class ResourceUtils {
 	 *         name and higher version, -1 otherwise
 	 */
 	public static int compareTo(Resource a, Resource b) {
-		IdentityCapability left = ResourceUtils.getIdentityCapability(a);
-		IdentityCapability right = ResourceUtils.getIdentityCapability(b);
-		if (left == right)
-			return 0;
+		int n = comparePresent(a, b);
+		if (isFinal(n))
+			return n;
 
-		if (left == null) {
-			return 1;
-		}
-		if (right == null) {
-			return -1;
-		}
+		IdentityCapability ia = ResourceUtils.getIdentityCapability(a);
+		IdentityCapability ib = ResourceUtils.getIdentityCapability(b);
 
-		int compare = Objects.compare(left.osgi_identity(), right.osgi_identity(), nullsFirst);
-		if (compare != 0) {
+		int compare = compare(ia, ib);
+		if (compare != 0)
 			return compare;
-		}
-		return Objects.compare(left.version(), right.version(), nullsFirst);
+
+		compare = compare(ia.osgi_identity(), ib.osgi_identity());
+		if (compare != 0)
+			return compare;
+
+		return compare(ia.version(), ib.version());
+	}
+
+	/**
+	 * Compare two capabilities. The order is:
+	 * <ul>
+	 * <li>nulls last
+	 * <li>namespace lexical
+	 * <li>namespace specific as described in its Namespace.
+	 * <li>by "version" if unknown namespace
+	 * <li>compare resources
+	 * </ul>
+	 *
+	 * @param a the left capability
+	 * @param b the right capability
+	 * @return -1 if right is higher, 0 if equal, and 1 if left is higher
+	 */
+	public static int compareTo(Capability a, Capability b) {
+		int compare = compare(a, b);
+		if (compare != 0)
+			return compare;
+
+		assert a != null && b != null;
+
+		String nsa = a.getNamespace();
+		String nsb = b.getNamespace();
+
+		compare = compare(nsa, nsb);
+		if (compare != 0)
+			return compare;
+
+		assert nsa.equals(nsb);
+
+		Map<String, Object> aa = a.getAttributes();
+		Map<String, Object> ab = b.getAttributes();
+		compare = comparePresent(aa, ab);
+		if (Comparators.isFinal(compare))
+			return compare;
+
+		assert aa != null && ab != null;
+
+		compare = switch (nsa) {
+			case BundleNamespace.BUNDLE_NAMESPACE -> compareMapsByKeys(aa, ab, //
+				BundleNamespace.BUNDLE_NAMESPACE, //
+				BundleNamespace.CAPABILITY_BUNDLE_VERSION_ATTRIBUTE);
+
+			case HostNamespace.HOST_NAMESPACE -> compareMapsByKeys(aa, ab, //
+				HostNamespace.HOST_NAMESPACE, //
+				HostNamespace.CAPABILITY_BUNDLE_VERSION_ATTRIBUTE);
+
+			case ServiceNamespace.SERVICE_NAMESPACE -> compareMapsByKeys(aa, ab,
+				ServiceNamespace.CAPABILITY_OBJECTCLASS_ATTRIBUTE, "version");
+
+			case PackageNamespace.PACKAGE_NAMESPACE -> compareMapsByKeys(aa, ab, //
+				PackageNamespace.PACKAGE_NAMESPACE, //
+				PackageNamespace.CAPABILITY_VERSION_ATTRIBUTE, //
+				PackageNamespace.CAPABILITY_BUNDLE_SYMBOLICNAME_ATTRIBUTE, //
+				PackageNamespace.CAPABILITY_BUNDLE_VERSION_ATTRIBUTE);
+
+			default -> compareMapsByKeys(aa, ab, nsa, "version");
+		};
+		if (compare != 0)
+			return compare;
+
+		if (aa.size() > ab.size())
+			return 1;
+		if (aa.size() < ab.size())
+			return -1;
+
+		return compareTo(a.getResource(), b.getResource());
+	}
+
+	public static int compareTo(Requirement a, Requirement b) {
+		int compare = compare(a, b);
+		if (compare != 0)
+			return compare;
+
+		String ns1 = a.getNamespace();
+		String ns2 = b.getNamespace();
+		compare = compare(ns1, ns2);
+		if (compare != 0)
+			return compare;
+
+		String f1 = a.getDirectives()
+			.get("filter");
+		String f2 = b.getDirectives()
+			.get("filter");
+		return compare(f1, f2);
 	}
 
 	public static List<Resource> sort(Collection<Resource> resources) {
@@ -835,5 +853,163 @@ public class ResourceUtils {
 	public static Map<Requirement, Collection<Capability>> emptyProviders(
 		Collection<? extends Requirement> requirements) {
 		return findProviders(requirements, requirement -> new ArrayList<>());
+	}
+
+	/**
+	 * Return the type field in the Identity capability. The IdentityCapability
+	 * interface has the problem that for the type it returns an enum, which
+	 * makes it impossible to check for custom identity types.
+	 *
+	 * @param r the resource
+	 * @return the type string
+	 */
+	public static Optional<String> getType(Resource r) {
+		List<Capability> id = r.getCapabilities(IdentityNamespace.IDENTITY_NAMESPACE);
+		if (!id.isEmpty()) {
+
+			Object object = id.get(0)
+				.getAttributes()
+				.get(IdentityNamespace.CAPABILITY_TYPE_ATTRIBUTE);
+			if (object instanceof String s) {
+				return Optional.of(s);
+			}
+		}
+		return Optional.empty();
+	}
+
+	/**
+	 * Return if the current IdentityNamespace type of the given resource r is
+	 * in the given list of types.
+	 */
+	public static boolean hasType(Resource r, String... types) {
+		return getType(r).map(s -> Strings.in(types, s))
+			.orElse(false);
+	}
+
+	/**
+	 * Select the capabilities that match the namespace and the filter applied
+	 * to the attributes.
+	 *
+	 * @param resource the resource to search
+	 * @param namespace the namespace to search or null
+	 * @param filter the filter to apply
+	 * @return matching capabilities
+	 */
+	public static List<Capability> findCapability(Resource resource, String namespace, String filter) {
+		Predicate<Map<String, Object>> filterPredicate = filterPredicate(filter);
+		return resource.getCapabilities(namespace)
+			.stream()
+			.filter(c -> filterPredicate.test(c.getAttributes()))
+			.toList();
+	}
+
+	/**
+	 * Detect capabilities containing packages that have the same name but
+	 * differ in the contained classes. Since the "bnd.hashes" attribute
+	 * contains the hashes of each class, we can detect differences. A problem
+	 * is when there are two bundles exporting the same package BUT with
+	 * different content (e.g. different files). This can lead to the problem
+	 * that a consumer expects a certain class in a package of bundleA but it is
+	 * not there - instead it is in bundleB.
+	 *
+	 * @param primaryAttributeName E.g. for a package it is
+	 *            "osgi.wiring.package"
+	 * @param capabilities list of capabilities to filter
+	 * @return list of problematic capabilities
+	 */
+	public static List<Capability> detectDuplicateCapabilitiesWithDifferentHashes(String primaryAttributeName,
+		List<Capability> capabilities) {
+		Map<String, List<Capability>> groupedByPackage = capabilities.stream()
+			.filter(cap -> cap.getAttributes()
+				.containsKey(primaryAttributeName))
+			.collect(groupingBy(cap -> (String) cap.getAttributes()
+				.get(primaryAttributeName), Lists.toList()));
+
+		List<Capability> culprits = new ArrayList<>();
+		for (List<Capability> caps : groupedByPackage.values()) {
+			if (caps.size() > 1) {
+				// Compare hashes of each capability
+				Set<List<String>> detectDifferences = new HashSet<>();
+
+				for (Capability cap : caps) {
+
+					@SuppressWarnings("unchecked")
+					List<String> hashes = (List<String>) cap.getAttributes()
+						.get("bnd.hashes");
+
+					if (detectDifferences.size() == 0) {
+						detectDifferences.add(hashes);
+					} else if (detectDifferences.size() > 0 && detectDifferences.add(hashes)) {
+						// being here means we were able to add a different
+						// bnd.hashes for the same primaryAttributeName (e.g.
+						// "osgi.wiring.package").
+						// this is the problem we want to detect.
+						// mark all capabilities for this primaryAttributeName
+						// as "problematic"
+						// this means there maybe multiple exporters of a
+						// package
+						// but with different content (classes)
+						culprits.addAll(caps);
+						break;
+					}
+				}
+			}
+		}
+
+		return culprits;
+	}
+
+	/**
+	 * Calculates a list of packages which are exported and also imported. This
+	 * can be handy for debugging and identify unwanted substitution packages /
+	 * self-imports.
+	 *
+	 * @param r the resource
+	 * @return a non-null list of packages.
+	 */
+	public static Collection<PackageExpression> getSubstitutionPackages(Resource r) {
+		List<Capability> caps = r.getCapabilities(PackageNamespace.PACKAGE_NAMESPACE);
+		List<Requirement> requirements = r.getRequirements(PackageNamespace.PACKAGE_NAMESPACE);
+
+		Set<String> exportedPackages = new LinkedHashSet<>();
+		Set<String> importedPackages = new LinkedHashSet<>();
+
+		// Populate exported packages
+		for (Capability cap : caps) {
+			String packageName = (String) cap.getAttributes()
+				.get(PackageNamespace.PACKAGE_NAMESPACE);
+			if (packageName != null) {
+				exportedPackages.add(packageName);
+			}
+		}
+
+		// Populate imported packages
+		Map<String, PackageExpression> pckVersionMap = new LinkedHashMap<>();
+		FilterParser fp = new FilterParser(); // new instance required to avoid
+												// invorrect caching
+		for (Requirement req : requirements) {
+			PackageExpression pckExp = getRequirementPackage(req, fp);
+			if (pckExp != null) {
+				importedPackages.add(pckExp.getPackageName());
+				pckVersionMap.put(pckExp.getPackageName(), pckExp);
+			}
+		}
+
+		Set<String> substitutions = new LinkedHashSet<>(exportedPackages);
+		substitutions.retainAll(importedPackages);
+
+		return substitutions.stream()
+			.map(pck -> pckVersionMap.get(pck))
+			.collect(Collectors.toCollection(LinkedHashSet::new));
+	}
+
+	private static PackageExpression getRequirementPackage(Requirement req, FilterParser fp) {
+
+		Expression exp = fp.parse(req);
+		if (exp instanceof PackageExpression pckExp) {
+			return pckExp;
+		}
+
+		return null;
 	}
 }

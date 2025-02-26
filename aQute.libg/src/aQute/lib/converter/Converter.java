@@ -15,6 +15,7 @@ import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
 import java.lang.reflect.ParameterizedType;
 import java.lang.reflect.Proxy;
+import java.lang.reflect.RecordComponent;
 import java.lang.reflect.Type;
 import java.lang.reflect.TypeVariable;
 import java.lang.reflect.WildcardType;
@@ -157,8 +158,7 @@ public class Converter {
 		// dictionaries we're still having
 		//
 
-		if (o instanceof Dictionary && !(o instanceof Map)) {
-			Dictionary<?, ?> dict = (Dictionary<?, ?>) o;
+		if (o instanceof Dictionary<?, ?> dict && !(o instanceof Map)) {
 			Map<Object, Object> map = new HashMap<>();
 			Enumeration<?> e = dict.keys();
 			while (e.hasMoreElements()) {
@@ -175,8 +175,7 @@ public class Converter {
 		if (Map.class.isAssignableFrom(resultType))
 			return map(type, resultType, o);
 
-		if (type instanceof GenericArrayType) {
-			GenericArrayType gType = (GenericArrayType) type;
+		if (type instanceof GenericArrayType gType) {
 			return array(gType.getGenericComponentType(), o);
 		}
 
@@ -211,8 +210,8 @@ public class Converter {
 			return proxy(resultType, (Map) o);
 		}
 
-		if (resultType == File.class && o instanceof String) {
-			return IO.getFile(base, (String) o);
+		if (resultType == File.class && o instanceof String string) {
+			return IO.getFile(base, string);
 		}
 
 		// Simple type coercion
@@ -282,7 +281,26 @@ public class Converter {
 					return Enum.valueOf((Class<Enum>) resultType, input);
 				} catch (Exception e) {
 					input = input.toUpperCase(Locale.ROOT);
-					return Enum.valueOf((Class<Enum>) resultType, input);
+					String input2 = input.replace('_', '.');
+
+					try {
+						return Enum.valueOf((Class<Enum>) resultType, input);
+					} catch (Exception ee) {
+						Class<? extends Enum> ec = resultType;
+
+						Enum[] enumConstants = ec.getEnumConstants();
+						if (enumConstants != null) {
+							for (Enum enm : enumConstants) {
+								String s = enm.toString();
+								if (s.equalsIgnoreCase(input))
+									return enm;
+								if (s.equalsIgnoreCase(input2))
+									return enm;
+							}
+							return null;
+						}
+						return null;
+					}
 				}
 			}
 			if (resultType == Pattern.class) {
@@ -331,43 +349,56 @@ public class Converter {
 		}
 
 		// Translate collections with size 1 by picking the single element
-		if (o instanceof Collection) {
-			Collection col = (Collection) o;
+		if (o instanceof Collection<?> col) {
 			if (col.size() == 1)
 				return convert(type, col.iterator()
 					.next());
 		}
 
-		if (o instanceof Map) {
+		if (o instanceof Map<?, ?> map) {
+
 			String key = null;
 			try {
-				Map<Object, Object> map = (Map) o;
-				MethodHandle mh = publicLookup().findConstructor(resultType, methodType(void.class));
-				Object instance = mh.invoke();
-				for (Map.Entry e : map.entrySet()) {
-					key = (String) e.getKey();
-					try {
-						Field f = resultType.getField(key);
-						Object value = convert(f.getGenericType(), e.getValue());
-						mh = publicLookup().unreflectSetter(f);
-						if (isStatic(f)) {
-							mh.invoke(value);
-						} else {
-							mh.invoke(instance, value);
-						}
-					} catch (Exception ee) {
-						// We cannot find the key, so try the __extra field
-						mh = publicLookup().findGetter(resultType, "__extra", Map.class);
-						Map<String, Object> extra = (Map<String, Object>) mh.invoke(instance);
-						if (extra == null) {
-							extra = new HashMap<>();
-							mh = publicLookup().findSetter(resultType, "__extra", Map.class);
-							mh.invoke(instance, extra);
-						}
-						extra.put(key, convert(Object.class, e.getValue()));
+				if (resultType.isRecord()) {
+					int length = resultType.getRecordComponents().length;
+					Object[] arguments = new Object[length];
+					MethodType constructorType = methodType(void.class);
+					for (int i = 0; i < length; i++) {
+						RecordComponent c = resultType.getRecordComponents()[i];
+						Object value = map.get(c.getName());
+						arguments[i] = cnv(c.getGenericType(), value);
+						constructorType = constructorType.appendParameterTypes(c.getType());
 					}
+					MethodHandle mh = publicLookup().findConstructor(resultType, constructorType);
+					return mh.invokeWithArguments(arguments);
+				} else {
+					MethodHandle mh = publicLookup().findConstructor(resultType, methodType(void.class));
+					Object instance = mh.invoke();
+					for (Map.Entry e : map.entrySet()) {
+						key = (String) e.getKey();
+						try {
+							Field f = resultType.getField(key);
+							Object value = convert(f.getGenericType(), e.getValue());
+							mh = publicLookup().unreflectSetter(f);
+							if (isStatic(f)) {
+								mh.invoke(value);
+							} else {
+								mh.invoke(instance, value);
+							}
+						} catch (Exception ee) {
+							// We cannot find the key, so try the __extra field
+							mh = publicLookup().findGetter(resultType, "__extra", Map.class);
+							Map<String, Object> extra = (Map<String, Object>) mh.invoke(instance);
+							if (extra == null) {
+								extra = new HashMap<>();
+								mh = publicLookup().findSetter(resultType, "__extra", Map.class);
+								mh.invoke(instance, extra);
+							}
+							extra.put(key, convert(Object.class, e.getValue()));
+						}
+					}
+					return instance;
 				}
-				return instance;
 			} catch (Error e) {
 				throw e;
 			} catch (Throwable e) {
@@ -388,17 +419,16 @@ public class Converter {
 	}
 
 	private Number number(Object o) {
-		if (o instanceof Number)
-			return (Number) o;
+		if (o instanceof Number n)
+			return n;
 
-		if (o instanceof Boolean)
-			return ((Boolean) o).booleanValue() ? 1 : 0;
+		if (o instanceof Boolean b)
+			return b.booleanValue() ? 1 : 0;
 
-		if (o instanceof Character)
-			return (int) ((Character) o).charValue();
+		if (o instanceof Character c)
+			return (int) c.charValue();
 
-		if (o instanceof String) {
-			String s = (String) o;
+		if (o instanceof String s) {
 			try {
 				return Double.parseDouble(s);
 			} catch (Exception e) {
@@ -433,12 +463,11 @@ public class Converter {
 		}
 
 		Type subType = Object.class;
-		if (collectionType instanceof ParameterizedType) {
-			ParameterizedType ptype = (ParameterizedType) collectionType;
+		if (collectionType instanceof ParameterizedType ptype) {
 			subType = ptype.getActualTypeArguments()[0];
 
-			if (subType == File.class && o instanceof String) {
-				FileSet tree = new FileSet(base, (String) o);
+			if (subType == File.class && o instanceof String string) {
+				FileSet tree = new FileSet(base, string);
 				return tree.getFiles();
 			}
 		}
@@ -488,8 +517,7 @@ public class Converter {
 
 		Type keyType = Object.class;
 		Type valueType = Object.class;
-		if (mapType instanceof ParameterizedType) {
-			ParameterizedType ptype = (ParameterizedType) mapType;
+		if (mapType instanceof ParameterizedType ptype) {
 			keyType = ptype.getActualTypeArguments()[0];
 			valueType = ptype.getActualTypeArguments()[1];
 		}
@@ -508,8 +536,8 @@ public class Converter {
 
 	public Object array(Type type, Object o) throws Exception {
 
-		if (type == File.class && o instanceof String) {
-			FileSet tree = new FileSet(base, (String) o);
+		if (type == File.class && o instanceof String string) {
+			FileSet tree = new FileSet(base, string);
 			return tree.getFiles()
 				.toArray(new File[0]);
 		}
@@ -526,26 +554,26 @@ public class Converter {
 	}
 
 	private Class<?> getRawClass(Type type) {
-		if (type instanceof Class)
-			return (Class<?>) type;
+		if (type instanceof Class<?> ctype)
+			return ctype;
 
-		if (type instanceof ParameterizedType)
-			return (Class<?>) ((ParameterizedType) type).getRawType();
+		if (type instanceof ParameterizedType ptype)
+			return (Class<?>) ptype.getRawType();
 
-		if (type instanceof GenericArrayType) {
-			Type componentType = ((GenericArrayType) type).getGenericComponentType();
+		if (type instanceof GenericArrayType gtype) {
+			Type componentType = gtype.getGenericComponentType();
 			return Array.newInstance(getRawClass(componentType), 0)
 				.getClass();
 		}
 
-		if (type instanceof TypeVariable) {
-			Type componentType = ((TypeVariable) type).getBounds()[0];
+		if (type instanceof TypeVariable ttype) {
+			Type componentType = ttype.getBounds()[0];
 			return Array.newInstance(getRawClass(componentType), 0)
 				.getClass();
 		}
 
-		if (type instanceof WildcardType) {
-			Type componentType = ((WildcardType) type).getUpperBounds()[0];
+		if (type instanceof WildcardType wtype) {
+			Type componentType = wtype.getUpperBounds()[0];
 			return Array.newInstance(getRawClass(componentType), 0)
 				.getClass();
 		}
@@ -554,8 +582,8 @@ public class Converter {
 	}
 
 	public Collection<?> toCollection(Object o) {
-		if (o instanceof Collection)
-			return (Collection<?>) o;
+		if (o instanceof Collection<?> c)
+			return c;
 
 		if (o.getClass()
 			.isArray()) {
@@ -576,8 +604,8 @@ public class Converter {
 	}
 
 	public Map<?, ?> toMap(Object o) throws Exception {
-		if (o instanceof Map)
-			return (Map<?, ?>) o;
+		if (o instanceof Map<?, ?> m)
+			return m;
 		Map<String, Object> result = new HashMap<>();
 		getFields(o.getClass()).forEach(f -> {
 			try {
@@ -742,13 +770,13 @@ public class Converter {
 	 * @return true if the class's instances can hold multiple values
 	 */
 	public static boolean isMultiple(Type c) {
-		if (c instanceof Class)
-			return isMultiple((Class<?>) c);
+		if (c instanceof Class<?> ctype)
+			return isMultiple(ctype);
 
-		if (c instanceof ParameterizedType) {
-			Type rawType = ((ParameterizedType) c).getRawType();
-			if (rawType instanceof Class)
-				return isMultiple((Class<?>) rawType);
+		if (c instanceof ParameterizedType ptype) {
+			Type rawType = ptype.getRawType();
+			if (rawType instanceof Class<?> ctype)
+				return isMultiple(ctype);
 		}
 
 		return false;
