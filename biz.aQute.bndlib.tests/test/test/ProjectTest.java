@@ -870,6 +870,25 @@ public class ProjectTest {
 		}
 	}
 
+	/**
+	 * Test for https://github.com/bndtools/bnd/issues/7303 that no NPE is
+	 * thrown.
+	 */
+	@Test
+	public void testRepoCollectorNoNPEWorkspaceOpenNotCalled() throws Exception {
+
+		try (Workspace ws = getWorkspace(IO.getFile("testresources/ws-repocollector"), "cnf").setOffline(false);
+			Project project = ws.getProject("p1");
+		) {
+			List<String> errors = project.getErrors();
+			List<String> warnings = project.getWarnings();
+
+			assertThat(errors).hasSize(0);
+			assertThat(warnings).hasSize(0);
+		}
+
+	}
+
 	@Test
 	public void testRepoCollectorNonJar() throws Exception {
 		try (Workspace ws = getWorkspace(IO.getFile("testresources/ws-repononjar"));
@@ -1308,6 +1327,16 @@ public class ProjectTest {
 	private Workspace getWorkspace(File file) throws Exception {
 		IO.copy(file, tmp);
 		return new Workspace(tmp);
+	}
+
+	/**
+	 * This method calles the 2-arg constructor of Workspace, which was
+	 * important for a bugfix, because this constructor does not call
+	 * Workspace.open()
+	 */
+	private Workspace getWorkspace(File file, String bndDir) throws Exception {
+		IO.copy(file, tmp);
+		return new Workspace(tmp, bndDir);
 	}
 
 	private Workspace getWorkspace(String dir) throws Exception {

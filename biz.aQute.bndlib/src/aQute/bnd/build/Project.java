@@ -191,12 +191,12 @@ public class Project extends Processor {
 		super(workspace);
 		this.workspace = workspace;
 		setFileMustExist(false);
+		repoCollector = new RepoCollector(this);
 		if (buildFile != null)
 			setProperties(buildFile);
 
 		// For backward compatibility reasons, we also read
 		readBuildProperties();
-		repoCollector = new RepoCollector(this);
 		addClose(repoCollector);
 	}
 
@@ -3249,7 +3249,7 @@ public class Project extends Processor {
 				.stream()
 				.mapToInt(arg -> arg.length() + 3) // +1 for space, +2 for potential quotes
 				.sum();
-			
+
 			// Windows command line limit is ~8191 characters
 			// Use arg file if we're getting close (allow some margin)
 			if (cmdLineLength > 6000) {
@@ -3282,7 +3282,7 @@ public class Project extends Processor {
 	private File createJavacArgumentFile(Command javac) throws Exception {
 		File argFile = IO.createTempFile(getTarget(), "javac-args", ".txt");
 		List<String> args = javac.getArguments();
-		
+
 		try (PrintWriter writer = new PrintWriter(argFile, "UTF-8")) {
 			// Skip the first argument (javac executable path)
 			for (int i = 1; i < args.size(); i++) {
@@ -3296,7 +3296,7 @@ public class Project extends Processor {
 				writer.println(arg);
 			}
 		}
-		
+
 		return argFile;
 	}
 
