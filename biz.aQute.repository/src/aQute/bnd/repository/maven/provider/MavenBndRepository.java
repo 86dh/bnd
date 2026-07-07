@@ -122,8 +122,8 @@ public class MavenBndRepository extends BaseRepository implements RepositoryPlug
 	private File								localRepo;
 	Reporter									reporter;
 	IMavenRepo									storage;
-	private boolean								inited;
-	IndexFile									index;
+	private volatile boolean					inited;
+	volatile IndexFile							index;
 	private ScheduledFuture<?>					indexPoller;
 	private RepoActions							actions							= new RepoActions(this);
 	private String								name;
