@@ -746,8 +746,10 @@ public class MavenBndRepository extends BaseRepository implements RepositoryPlug
 			}
 			Set<String> multi = Strings.splitAsStream(configuration.multi())
 				.collect(Sets.toSet());
-			this.index = new IndexFile(domain, reporter, indexFile, source, storage, client.promiseFactory(), multi);
-			this.index.open();
+			// Set the index only after it completes opening
+			IndexFile newIndex = new IndexFile(domain, reporter, indexFile, source, storage, client.promiseFactory(), multi);
+			newIndex.open();
+			this.index = newIndex;
 
 			try (Formatter f = new Formatter()) {
 				validateUris(release, f);
