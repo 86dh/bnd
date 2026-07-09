@@ -209,7 +209,7 @@ public class BundleTaskExtension {
 		outputDirectory = objects.directoryProperty();
 		SourceSet mainSourceSet = sourceSets(project).getByName(SourceSet.MAIN_SOURCE_SET_NAME);
 		setSourceSet(mainSourceSet);
-		classpath(jarLibraryElements(task, mainSourceSet.getCompileClasspathConfigurationName()));
+		classpath(jarLibraryElements(project, mainSourceSet.getCompileClasspathConfigurationName()));
 		properties = objects.mapProperty(String.class, Object.class)
 			.convention(project.provider(this::getGradleProjectProperties));
 		defaultBundleSymbolicName = task.getArchiveBaseName()
