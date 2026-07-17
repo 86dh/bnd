@@ -22,6 +22,7 @@ public abstract class ProjectTester {
 	private boolean					continuous	= true;
 	private boolean					terminate	= true;
 
+	@SuppressWarnings("deprecation")
 	public ProjectTester(Project project) throws Exception {
 		this.project = project;
 		launcher = project.getProjectLauncher();

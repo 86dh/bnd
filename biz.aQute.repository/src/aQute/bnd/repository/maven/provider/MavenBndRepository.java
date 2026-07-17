@@ -662,6 +662,7 @@ public class MavenBndRepository extends BaseRepository implements RepositoryPlug
 			List<MavenBackingRepository> snapshot = new ArrayList<MavenBackingRepository>();
 
 			String releaseUrl = configuration.releaseUrl();
+			@SuppressWarnings("removal")
 			SonatypeMode sonatypeMode = configuration.sonatypeMode(SonatypeMode.NONE.name());
 
 			String stagingUrl = configuration.stagingUrl();

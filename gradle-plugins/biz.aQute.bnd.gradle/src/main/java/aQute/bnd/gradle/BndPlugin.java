@@ -633,7 +633,7 @@ public class BndPlugin implements Plugin<Project> {
 								// case for sonatype release)
 								tt.getLogger()
 									.lifecycle("bnd: Last release bundle ({}) {}", count, bndProject.getName());
-								bndProject.release(new ReleaseParameter(null, false, true));
+								releaseLastBundle(bndProject);
 							}
 						} catch (Exception e) {
 							throw new GradleException(
@@ -1035,5 +1035,11 @@ public class BndPlugin implements Plugin<Project> {
 			logger.debug("Could not find getter method for field {}", name, e);
 		}
 		return null;
+	}
+
+	@SuppressWarnings("removal")
+	private void releaseLastBundle(aQute.bnd.build.Project bndProject) throws Exception {
+		ReleaseParameter param = new ReleaseParameter(null, false, true);
+		bndProject.release(param);
 	}
 }

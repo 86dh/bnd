@@ -30,7 +30,7 @@ import org.apache.maven.execution.MavenSession;
 import org.apache.maven.plugin.AbstractMojo;
 import org.apache.maven.plugin.MojoExecutionException;
 import org.apache.maven.plugin.MojoFailureException;
-import org.apache.maven.plugins.annotations.Component;
+import javax.inject.Inject;
 import org.apache.maven.plugins.annotations.Mojo;
 import org.apache.maven.plugins.annotations.Parameter;
 import org.apache.maven.plugins.annotations.ResolutionScope;
@@ -104,13 +104,13 @@ public class ExportMojo extends AbstractMojo {
 	@Parameter(defaultValue = "${project.basedir}")
 	private File 												bndrunDir;
 
-	@Component
+	@Inject
 	private RepositorySystem									system;
 
-	@Component
+	@Inject
 	private ProjectDependenciesResolver							resolver;
 
-	@Component
+	@Inject
 	@SuppressWarnings("deprecation")
 	protected org.apache.maven.artifact.factory.ArtifactFactory	artifactFactory;
 
