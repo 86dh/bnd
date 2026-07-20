@@ -1,11 +1,12 @@
 package aQute.p2.provider;
 
-import static org.assertj.core.api.Assertions.assertThat;
-
 import java.io.File;
 import java.io.InputStream;
 import java.util.List;
 
+import org.assertj.core.api.SoftAssertions;
+import org.assertj.core.api.junit.jupiter.InjectSoftAssertions;
+import org.assertj.core.api.junit.jupiter.SoftAssertionsExtension;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.osgi.resource.Requirement;
@@ -14,10 +15,6 @@ import org.osgi.resource.Resource;
 import aQute.bnd.osgi.Jar;
 import aQute.bnd.test.jupiter.InjectTemporaryDirectory;
 import aQute.lib.io.IO;
-
-import org.assertj.core.api.SoftAssertions;
-import org.assertj.core.api.junit.jupiter.InjectSoftAssertions;
-import org.assertj.core.api.junit.jupiter.SoftAssertionsExtension;
 
 /**
  * Test to verify that Eclipse feature requirement version and match attributes
@@ -44,29 +41,29 @@ public class FeatureVersionFilterTest {
 			      id="test.feature"
 			      label="Test Feature"
 			      version="1.0.0">
-			   
+
 			   <requires>
 			      <!-- perfect: exact version match -->
 			      <import plugin="plugin.perfect" version="1.2.3.qualifier" match="perfect"/>
-			      
+
 			      <!-- equivalent: same major.minor.micro, any qualifier -->
 			      <import plugin="plugin.equivalent" version="1.2.3" match="equivalent"/>
-			      
+
 			      <!-- compatible: same major.minor, micro >= specified -->
 			      <import plugin="plugin.compatible" version="1.2.0" match="compatible"/>
-			      
+
 			      <!-- greaterOrEqual: version >= specified -->
 			      <import plugin="plugin.greaterOrEqual" version="1.0.0" match="greaterOrEqual"/>
-			      
+
 			      <!-- No match specified (defaults to greaterOrEqual) -->
 			      <import plugin="plugin.default" version="2.0.0"/>
-			      
+
 			      <!-- No version specified -->
 			      <import plugin="plugin.noversion"/>
-			      
+
 			      <!-- Feature requirement with version -->
 			      <import feature="feature.compatible" version="1.5.0" match="compatible"/>
-			      
+
 			      <!-- Feature requirement without version -->
 			      <import feature="feature.noversion"/>
 			   </requires>
@@ -192,17 +189,17 @@ public class FeatureVersionFilterTest {
 			      id="test.edge.feature"
 			      label="Test Edge Cases"
 			      version="1.0.0">
-			   
+
 			   <requires>
 			      <!-- Version 0.0.0 (should be treated as no version) -->
 			      <import plugin="plugin.zero" version="0.0.0" match="greaterOrEqual"/>
-			      
+
 			      <!-- Complex qualifier -->
 			      <import plugin="plugin.qualifier" version="1.2.3.v20251201-1234" match="perfect"/>
-			      
+
 			      <!-- Large version numbers -->
 			      <import plugin="plugin.large" version="99.99.99" match="compatible"/>
-			      
+
 			      <!-- Empty match (should default to greaterOrEqual) -->
 			      <import plugin="plugin.emptymatch" version="1.0.0" match=""/>
 			   </requires>

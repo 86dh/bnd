@@ -97,5 +97,6 @@ public interface Configuration {
 	/**
 	 * @return SonatypeMode for this repository none, manual or autopublish
 	 */
+	@SuppressWarnings("removal")
 	SonatypeMode sonatypeMode(String deflt);
 }

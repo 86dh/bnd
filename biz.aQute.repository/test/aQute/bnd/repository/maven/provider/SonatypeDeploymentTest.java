@@ -154,6 +154,7 @@ public class SonatypeDeploymentTest {
 		Files.writeString(buildBnd.toPath(), content);
 	}
 
+	@SuppressWarnings("removal")
 	private void testDeployment(boolean isSnapshot) throws Exception, IOException {
 		LinkedList<File> releasedFiles = new LinkedList<File>();
 		try (Workspace ws = Workspace.findWorkspace(wsDir)) {

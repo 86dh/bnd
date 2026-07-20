@@ -153,7 +153,7 @@ public interface MavenRunListenerHelper {
 			.map(executionPrefix::concat)
 			.collect(toList());
 
-		MavenExecutionPlan plan = maven.calculateExecutionPlan(mavenProject, tasks, true, monitor);
+		MavenExecutionPlan plan = projectFacade.calculateExecutionPlan(tasks, monitor);
 		return plan.getMojoExecutions()
 			.stream()
 			.filter(predicate)

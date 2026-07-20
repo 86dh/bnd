@@ -106,6 +106,7 @@ public class BndPomRepository extends BaseRepository
 		prepared.get(); // start preparation
 	}
 
+	@SuppressWarnings("removal")
 	private Promise<Boolean> preparePromise() {
 		if (configuration.name() == null) {
 			status("Must get a name");

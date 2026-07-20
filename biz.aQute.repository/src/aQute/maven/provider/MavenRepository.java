@@ -47,6 +47,7 @@ public class MavenRepository implements IMavenRepo, Closeable {
 	private final boolean						localOnly;
 	private final Map<Revision, Promise<POM>>	poms			= new WeakHashMap<>();
 	private final Reporter						reporter;
+	@SuppressWarnings("removal")
 	private SonatypeMode						sonatypeMode	= SonatypeMode.NONE;
 	private String								sonatypeReleaseUrl	= null;
 	private String								sonatypeSnapshotUrl	= null;
@@ -415,10 +416,12 @@ public class MavenRepository implements IMavenRepo, Closeable {
 		}
 	}
 
+	@SuppressWarnings("removal")
 	public void setSonatypeMode(SonatypeMode sonatypeMode) {
 		this.sonatypeMode = sonatypeMode;
 	}
 
+	@SuppressWarnings("removal")
 	public SonatypeMode getSonatypeMode() {
 		return sonatypeMode;
 	}

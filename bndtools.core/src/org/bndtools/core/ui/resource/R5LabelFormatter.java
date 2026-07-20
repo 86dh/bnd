@@ -42,7 +42,6 @@ import bndtools.Plugin;
 public class R5LabelFormatter {
 
 	private final static Pattern				EE_PATTERN		= Pattern.compile("osgi.ee=([^)]*).*version=([^)]*)");
-	private final static Pattern				FEATURE_PATTERN	= Pattern.compile(".*type=org\\.eclipse\\.update\\.feature.*");
 	private final static Pattern				FEATURE_IDENTITY_PATTERN = Pattern.compile("osgi\\.identity=([^)]+)");
 	private final static Pattern				FEATURE_VERSION_PATTERN = Pattern.compile("version=([^)]+)");
 	private final static Pattern				FEATURE_VERSION_GTE_PATTERN = Pattern.compile("\\(version>=([^)]+)\\)");
@@ -277,13 +276,13 @@ public class R5LabelFormatter {
 		} else {
 			try {
 				Expression exp = fp.parse(filter);
-				
+
 				// Handle osgi.identity namespace specially for clean display
 				if (IdentityNamespace.IDENTITY_NAMESPACE.equals(namespace)) {
 					// Extract identity name and show a specific version or version range
 					Matcher identityMatcher = FEATURE_IDENTITY_PATTERN.matcher(filter);
 					Matcher versionMatcher = FEATURE_VERSION_PATTERN.matcher(filter);
-					
+
 					if (identityMatcher.find()) {
 						String identityName = identityMatcher.group(1);
 						label.append(identityName, BoldStyler.INSTANCE_DEFAULT);
