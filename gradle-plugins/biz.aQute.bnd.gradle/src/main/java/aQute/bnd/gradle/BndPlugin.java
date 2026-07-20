@@ -262,9 +262,12 @@ public class BndPlugin implements Plugin<Project> {
 				sourceSet.setCompileClasspath(jarLibraryElements(project, sourceSet.getCompileClasspathConfigurationName()));
 				sourceSet.setRuntimeClasspath(objects.fileCollection()
 					.from(sourceSet.getOutput(), jarLibraryElements(project, sourceSet.getRuntimeClasspathConfigurationName())));
+				TaskProvider<Task> processResourcesTask = tasks.named(sourceSet.getProcessResourcesTaskName());
+				TaskProvider<AbstractCompile> compileTask = tasks.named(sourceSet.getCompileJavaTaskName(),
+					AbstractCompile.class, t -> t.mustRunAfter(processResourcesTask));
 				generateInputAction.ifPresent(action -> {
-					tasks.named(sourceSet.getCompileJavaTaskName()).configure(action);
-					tasks.named(sourceSet.getProcessResourcesTaskName()).configure(action);
+					compileTask.configure(action);
+					processResourcesTask.configure(action);
 				});
 			});
 			sourceSets.getByName(SourceSet.TEST_SOURCE_SET_NAME, sourceSet -> {
@@ -287,6 +290,8 @@ public class BndPlugin implements Plugin<Project> {
 					.from(mainSourceSet.getOutput(), jarLibraryElements(project, sourceSet.getCompileClasspathConfigurationName())));
 				sourceSet.setRuntimeClasspath(objects.fileCollection()
 					.from(sourceSet.getOutput(), mainSourceSet.getOutput(), jarLibraryElements(project, sourceSet.getRuntimeClasspathConfigurationName())));
+				tasks.named(sourceSet.getCompileJavaTaskName(),
+					AbstractCompile.class,t -> t.mustRunAfter(tasks.named(sourceSet.getProcessResourcesTaskName())));
 			});
 			/* Configure srcDirs for any additional languages */
 			project.afterEvaluate(p -> {
@@ -304,16 +309,14 @@ public class BndPlugin implements Plugin<Project> {
 					TaskProvider<Task> processResourcesTask = tasks.named(sourceSet.getProcessResourcesTaskName());
 					sourceDirectorySets.forEach((name, sourceDirectorySet) -> {
 						try {
-							TaskProvider<AbstractCompile> compileTask = tasks.named(sourceSet.getCompileTaskName(name),
-								AbstractCompile.class, t -> t.getInputs()
-									.files(processResourcesTask)
-									.withPropertyName(processResourcesTask.getName())
-							);
 							sourceDirectorySet.setSrcDirs(sourceSet.getJava()
 								.getSrcDirs());
 							sourceDirectorySet.getDestinationDirectory()
 								.value(sourceSet.getJava()
 									.getDestinationDirectory());
+							TaskProvider<AbstractCompile> compileTask = tasks.named(sourceSet.getCompileTaskName(name),
+								AbstractCompile.class, t -> t.mustRunAfter(processResourcesTask)
+							);
 							generateInputAction.ifPresent(compileTask::configure);
 						} catch (UnknownDomainObjectException e) {
 							// no such task
@@ -334,16 +337,14 @@ public class BndPlugin implements Plugin<Project> {
 					TaskProvider<Task> processResourcesTask = tasks.named(sourceSet.getProcessResourcesTaskName());
 					sourceDirectorySets.forEach((name, sourceDirectorySet) -> {
 						try {
-							TaskProvider<AbstractCompile> compileTask = tasks.named(sourceSet.getCompileTaskName(name),
-								AbstractCompile.class, t -> t.getInputs()
-									.files(processResourcesTask)
-									.withPropertyName(processResourcesTask.getName())
-							);
 							sourceDirectorySet.setSrcDirs(sourceSet.getJava()
 								.getSrcDirs());
 							sourceDirectorySet.getDestinationDirectory()
 								.value(sourceSet.getJava()
 									.getDestinationDirectory());
+							tasks.named(sourceSet.getCompileTaskName(name),
+								AbstractCompile.class, t -> t.mustRunAfter(processResourcesTask)
+							);
 						} catch (UnknownDomainObjectException e) {
 							// no such task
 						}
