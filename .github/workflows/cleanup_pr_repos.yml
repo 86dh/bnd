@@ -28,6 +28,7 @@ permissions:
 jobs:
   cleanup:
     name: Cleanup p2/pr for closed PRs
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
     steps:
     - name: Harden Runner
